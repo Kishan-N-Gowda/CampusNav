@@ -1,0 +1,7 @@
+project_id = "zqrkpfavuqnvwbqxwacc"
+
+[functions.manage-admins]
+verify_jwt = true
+
+[functions.tts]
+verify_jwt = false

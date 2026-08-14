@@ -1,0 +1,1 @@
+ALTER TABLE public.locations ADD COLUMN IF NOT EXISTS hidden boolean NOT NULL DEFAULT false;

@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "sdk_version": "0.20.0",
+  "path": "/functions/v1/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "campus-navigator-mcp",
+      "version": "0.1.0",
+      "title": "Campus Navigator MCP"
+    },
+    "tools": [
+      {
+        "name": "search_locations",
+        "title": "Search campus locations",
+        "description": "Search campus locations by free-text name (English or Kannada) and/or category. Returns matching locations with slug, name, category, floor, and description.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Free-text match on the location name."
+            },
+            "category": {
+              "type": "string",
+              "description": "Exact category filter (e.g. 'academic', 'food')."
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "description": "Max results (default 20)."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_categories",
+        "title": "List location categories",
+        "description": "Return the distinct set of campus location categories with counts.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "get_directions",
+        "title": "Get directions between two campus locations",
+        "description": "Compute the shortest walking route between two campus locations identified by slug. Returns the ordered route, distance in metres, and estimated walking time in minutes.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "from_slug": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Slug of the starting location."
+            },
+            "to_slug": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Slug of the destination location."
+            }
+          },
+          "required": [
+            "from_slug",
+            "to_slug"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
