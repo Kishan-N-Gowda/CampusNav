@@ -83,8 +83,16 @@ class CloudTTSProvider implements TTSProvider {
   private async fetchAudio(text: string, lang: Language): Promise<string | null> {
     if (Date.now() < this.pausedUntil) return null;
     try {
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/tts`;
-      const anon = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const baseUrl =
+        import.meta.env.VITE_SUPABASE_URL || "https://zqrkpfavuqnvwbqxwacc.supabase.co";
+      const anon =
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+        import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!anon) {
+        // No TTS backend key configured, gracefully fall back to device TTS
+        return null;
+      }
+      const url = `${baseUrl.replace(/\/$/, "")}/functions/v1/tts`;
       const res = await fetch(url, {
         method: "POST",
         headers: {

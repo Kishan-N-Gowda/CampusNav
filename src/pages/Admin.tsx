@@ -49,7 +49,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { useCampusData } from "@/hooks/useCampusData";
 import { useAuth } from "@/hooks/useAuth";
 import type { CampusLocation } from "@/data/locations";
@@ -508,6 +508,18 @@ function AdminInner() {
           Manage locations, paths, and generate campus QR codes.
         </p>
       </div>
+
+      {!isSupabaseConfigured && (
+        <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-700 dark:text-amber-300">
+          <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+          <div className="space-y-0.5">
+            <span className="font-bold">Missing Supabase Vercel Configuration</span>
+            <p className="opacity-90">
+              Admin writes and database operations require <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> in your Vercel Environment Variables.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

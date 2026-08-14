@@ -1,11 +1,11 @@
 import { useState, FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
-import { ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -21,6 +21,10 @@ export default function Auth() {
 
   const onSignIn = async (e: FormEvent) => {
     e.preventDefault();
+    if (!isSupabaseConfigured) {
+      toast.error("VITE_SUPABASE_PUBLISHABLE_KEY is not configured in Vercel environment variables.");
+      return;
+    }
     setSubmitting(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setSubmitting(false);
@@ -34,6 +38,10 @@ export default function Auth() {
 
   const onSignUp = async (e: FormEvent) => {
     e.preventDefault();
+    if (!isSupabaseConfigured) {
+      toast.error("VITE_SUPABASE_PUBLISHABLE_KEY is not configured in Vercel environment variables.");
+      return;
+    }
     if (password.length < 8) {
       toast.error("Password must be at least 8 characters");
       return;
@@ -58,7 +66,20 @@ export default function Auth() {
         <ArrowLeft className="h-4 w-4" /> Back to map
       </Link>
 
+      {!isSupabaseConfigured && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
+          <div className="space-y-0.5">
+            <span className="font-bold">Supabase variables missing</span>
+            <p className="opacity-90">
+              Authentication requires <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> in your Vercel project settings.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-3xl border border-border bg-card p-6 shadow-card sm:p-8">
+
         <h1 className="font-display text-2xl font-bold gradient-text">CampusNav Admin</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Sign in to manage locations, paths and QR codes.

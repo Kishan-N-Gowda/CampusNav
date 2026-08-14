@@ -50,69 +50,77 @@ export function useAppConfig() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const { data } = await supabase.from("app_settings").select("key, value");
-    const rows = data ?? [];
-    const qa = rows.find((r) => r.key === "quick_access")?.value as unknown as
-      | QuickAccessConfig
-      | undefined;
-    if (qa) {
-      setQuickAccess({
-        count: Number(qa.count) || 4,
-        location_ids: Array.isArray(qa.location_ids) ? qa.location_ids : [],
-      });
-    }
+    try {
+      const { data, error } = await supabase.from("app_settings").select("key, value");
+      if (error) {
+        console.warn("[AppConfig] fetch settings error:", error.message);
+        return;
+      }
+      const rows = data ?? [];
+      const qa = rows.find((r) => r.key === "quick_access")?.value as unknown as
+        | QuickAccessConfig
+        | undefined;
+      if (qa) {
+        setQuickAccess({
+          count: Number(qa.count) || 4,
+          location_ids: Array.isArray(qa.location_ids) ? qa.location_ids : [],
+        });
+      }
 
-    const map = rows.find((r) => r.key === "campus_map")?.value as unknown as
-      | CampusMapSetting
-      | undefined;
-    const path = map?.path ?? null;
-    setMapPath(path);
-    if (path) {
-      const { data: signed } = await supabase.storage
-        .from("campus-maps")
-        .createSignedUrl(path, 60 * 60 * 24 * 7);
-      if (signed?.signedUrl) {
-        setMapSrc(signed.signedUrl);
+      const map = rows.find((r) => r.key === "campus_map")?.value as unknown as
+        | CampusMapSetting
+        | undefined;
+      const path = map?.path ?? null;
+      setMapPath(path);
+      if (path) {
+        const { data: signed } = await supabase.storage
+          .from("campus-maps")
+          .createSignedUrl(path, 60 * 60 * 24 * 7);
+        if (signed?.signedUrl) {
+          setMapSrc(signed.signedUrl);
+          try {
+            localStorage.setItem(MAP_URL_KEY, signed.signedUrl);
+          } catch {
+            /* ignore */
+          }
+        }
+      } else {
+        setMapSrc(fallbackMap);
         try {
-          localStorage.setItem(MAP_URL_KEY, signed.signedUrl);
+          localStorage.removeItem(MAP_URL_KEY);
         } catch {
           /* ignore */
         }
       }
-    } else {
-      setMapSrc(fallbackMap);
+
+      // Per-floor maps
+      const rawFloors = map?.floors ?? {};
+      const paths: Record<string, string> = {};
+      for (const [k, v] of Object.entries(rawFloors)) {
+        if (typeof v === "string" && v) paths[k] = v;
+      }
+      setFloorMapPaths(paths);
+
+      const srcs: Record<string, string> = {};
+      await Promise.all(
+        Object.entries(paths).map(async ([floor, p]) => {
+          const { data: signed } = await supabase.storage
+            .from("campus-maps")
+            .createSignedUrl(p, 60 * 60 * 24 * 7);
+          if (signed?.signedUrl) srcs[floor] = signed.signedUrl;
+        })
+      );
+      setFloorMapSrcs(srcs);
       try {
-        localStorage.removeItem(MAP_URL_KEY);
+        localStorage.setItem(FLOOR_URL_KEY, JSON.stringify(srcs));
       } catch {
         /* ignore */
       }
+    } catch (err) {
+      console.warn("[AppConfig] exception during refresh:", err);
+    } finally {
+      setLoading(false);
     }
-
-    // Per-floor maps
-    const rawFloors = map?.floors ?? {};
-    const paths: Record<string, string> = {};
-    for (const [k, v] of Object.entries(rawFloors)) {
-      if (typeof v === "string" && v) paths[k] = v;
-    }
-    setFloorMapPaths(paths);
-
-    const srcs: Record<string, string> = {};
-    await Promise.all(
-      Object.entries(paths).map(async ([floor, p]) => {
-        const { data: signed } = await supabase.storage
-          .from("campus-maps")
-          .createSignedUrl(p, 60 * 60 * 24 * 7);
-        if (signed?.signedUrl) srcs[floor] = signed.signedUrl;
-      })
-    );
-    setFloorMapSrcs(srcs);
-    try {
-      localStorage.setItem(FLOOR_URL_KEY, JSON.stringify(srcs));
-    } catch {
-      /* ignore */
-    }
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {

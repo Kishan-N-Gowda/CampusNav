@@ -38,25 +38,31 @@ export function useAuth() {
 
     let roleChannel: ReturnType<typeof supabase.channel> | null = null;
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      const uid = data.session?.user?.id;
-      if (uid) {
-        await loadRoles(uid);
-        // Live role changes (e.g. an admin promotes this user) apply without a refresh.
-        roleChannel = supabase
-          .channel(`user-roles-${uid}-${Math.random().toString(36).slice(2)}`)
-          .on(
-            "postgres_changes",
-            { event: "*", schema: "public", table: "user_roles", filter: `user_id=eq.${uid}` },
-            () => loadRoles(uid)
-          )
-          .subscribe();
-      }
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        if (!active) return;
+        setSession(data?.session ?? null);
+        setUser(data?.session?.user ?? null);
+        const uid = data?.session?.user?.id;
+        if (uid) {
+          await loadRoles(uid);
+          // Live role changes (e.g. an admin promotes this user) apply without a refresh.
+          roleChannel = supabase
+            .channel(`user-roles-${uid}-${Math.random().toString(36).slice(2)}`)
+            .on(
+              "postgres_changes",
+              { event: "*", schema: "public", table: "user_roles", filter: `user_id=eq.${uid}` },
+              () => loadRoles(uid)
+            )
+            .subscribe();
+        }
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.warn("[Auth] getSession warning:", err);
+        if (active) setLoading(false);
+      });
 
     return () => {
       active = false;
