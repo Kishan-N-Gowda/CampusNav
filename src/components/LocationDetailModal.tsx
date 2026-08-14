@@ -101,16 +101,9 @@ export function LocationDetailModal({
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="flex items-center gap-1.5 font-medium">
               <Icons.Layers className="h-3.5 w-3.5 text-primary" />
-              {lang === "kn" ? "ಮಹಡಿ ಹಂತ:" : "Floor Level:"}
+              {lang === "kn" ? "ಮಹಡಿ:" : "Floor:"}
             </span>
             <span className="font-bold text-foreground">{floorLabel(location.floor)}</span>
-          </div>
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span className="flex items-center gap-1.5 font-medium">
-              <Icons.Building2 className="h-3.5 w-3.5 text-primary" />
-              {lang === "kn" ? "ವಿಭಾಗ / ಕಟ್ಟಡ:" : "Category:"}
-            </span>
-            <span className="font-semibold text-foreground">{catMeta[lang]}</span>
           </div>
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="flex items-center gap-1.5 font-medium">

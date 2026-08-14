@@ -143,6 +143,36 @@ export function CampusMap({
       : undefined);
   const to = route[route.length - 1];
 
+  // Active floor transition text for current floor (e.g. "↑ Take Stairs → 2nd Floor")
+  const activeFloorTransition = useMemo(() => {
+    if (!crossFloorConnectors || crossFloorConnectors.length === 0) return null;
+    const conn = crossFloorConnectors.find(
+      (c) => c.fromFloor === currentFloor || c.toFloor === currentFloor
+    );
+    if (!conn) return null;
+    const isDeparture = conn.fromFloor === currentFloor;
+    const targetFloor = isDeparture ? conn.toFloor : conn.fromFloor;
+    if (targetFloor == null) return null;
+
+    const isUp = isDeparture ? conn.toFloor! > conn.fromFloor! : conn.fromFloor! > conn.toFloor!;
+    const arrow = isUp ? "↑" : "↓";
+    const targetName =
+      targetFloor === 0
+        ? (labelLang === "kn" ? "ನೆಲ ಮಹಡಿ" : "Ground Floor")
+        : labelLang === "kn"
+        ? `${targetFloor}ನೇ ಮಹಡಿ`
+        : `${targetFloor}${targetFloor === 1 ? "st" : targetFloor === 2 ? "nd" : targetFloor === 3 ? "rd" : "th"} Floor`;
+
+    if (labelLang === "kn") {
+      return isDeparture
+        ? `${arrow} ಮೆಟ್ಟಿಲು ಹತ್ತಿ → ${targetName}`
+        : `${arrow} ${targetName}ಯಿಂದ ಮೆಟ್ಟಿಲು`;
+    }
+    return isDeparture
+      ? `${arrow} Take Stairs → ${targetName}`
+      : `${arrow} Stairs from ${targetName}`;
+  }, [crossFloorConnectors, currentFloor, labelLang]);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [zoom, setZoom] = useState(1);
@@ -434,38 +464,26 @@ export function CampusMap({
           );
         })}
 
-        {/* Clear Floor-Transition Indicator Badges (e.g., ⬆ Take Stairs → 1st Floor) */}
+        {/* Floor-Transition Pink Dot Indicator on map */}
         {showPath &&
           crossFloorConnectors?.map((c, i) => {
             const isDeparture = c.fromFloor === currentFloor;
             const isArrival = c.toFloor === currentFloor;
             if (!isDeparture && !isArrival) return null;
 
-            const targetFloor = isDeparture ? c.toFloor : c.fromFloor;
-            if (targetFloor == null) return null;
-
-            const isUp = isDeparture ? c.toFloor! > c.fromFloor! : c.fromFloor! > c.toFloor!;
             const x = isDeparture ? c.x1 : c.x2;
             const y = isDeparture ? c.y1 : c.y2;
-            const arrow = isUp ? "⬆" : "⬇";
-            const targetName =
-              targetFloor === 0
-                ? "Ground Floor"
-                : `${targetFloor}${targetFloor === 1 ? "st" : targetFloor === 2 ? "nd" : "th"} Floor`;
-            const labelText = isDeparture
-              ? `${arrow} Take Stairs → ${targetName}`
-              : `${arrow} Stairs from ${targetName}`;
 
             return (
               <div
-                key={`stair-badge-${i}`}
-                className="pointer-events-auto absolute z-25 -translate-x-1/2 -translate-y-1/2"
+                key={`stair-dot-${i}`}
+                className="pointer-events-none absolute z-25 -translate-x-1/2 -translate-y-1/2"
                 style={{ left: `${x}%`, top: `${y}%` }}
               >
-                <div className="flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-accent-foreground shadow-soft ring-1 ring-background/80">
-                  <span className="text-[10px] font-extrabold">{arrow}</span>
-                  <span className="whitespace-nowrap">{labelText}</span>
-                </div>
+                <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pink-500/60 opacity-80" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-pink-500 ring-2 ring-background shadow-md" />
+                </span>
               </div>
             );
           })}
@@ -566,16 +584,13 @@ export function CampusMap({
             />
             {legendLabels.route}
           </span>
-          {legendLabels.connector && crossFloorConnectors && crossFloorConnectors.length > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span
-                className="inline-block h-[2px] w-3.5 shrink-0 rounded-full"
-                style={{
-                  backgroundImage:
-                    "repeating-linear-gradient(90deg, hsl(var(--accent)) 0 2px, transparent 2px 4px)",
-                }}
-              />
-              {legendLabels.connector}
+          {(activeFloorTransition || (legendLabels.connector && crossFloorConnectors && crossFloorConnectors.length > 0)) && (
+            <span className="flex items-center gap-1.5 font-semibold text-pink-500 dark:text-pink-400">
+              <span className="relative inline-flex h-2 w-2 shrink-0">
+                <span className="absolute inset-0 -m-0.5 rounded-full bg-pink-500/40 animate-pulse" />
+                <span className="relative h-2 w-2 rounded-full bg-pink-500 ring-1 ring-background" />
+              </span>
+              {activeFloorTransition || legendLabels.connector}
             </span>
           )}
         </div>
