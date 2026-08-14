@@ -515,7 +515,7 @@ function AdminInner() {
           <div className="space-y-0.5">
             <span className="font-bold">Missing Supabase Vercel Configuration</span>
             <p className="opacity-90">
-              Admin writes and database operations require <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> in your Vercel Environment Variables.
+              Admin writes and database operations require <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> (or <code>VITE_SUPABASE_PUBLISHABLE_KEY</code>) in your Vercel Environment Variables.
             </p>
           </div>
         </div>

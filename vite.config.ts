@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
+  envPrefix: ["VITE_", "NEXT_PUBLIC_", "REACT_APP_", "SUPABASE_"],
   plugins: [react(), mode === "development" && componentTagger(), mcpPlugin()].filter(Boolean),
   resolve: {
     alias: {

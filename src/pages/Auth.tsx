@@ -22,7 +22,7 @@ export default function Auth() {
   const onSignIn = async (e: FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
-      toast.error("VITE_SUPABASE_PUBLISHABLE_KEY is not configured in Vercel environment variables.");
+      toast.error("Supabase API key is not configured in Vercel environment variables.");
       return;
     }
     setSubmitting(true);
@@ -39,7 +39,7 @@ export default function Auth() {
   const onSignUp = async (e: FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
-      toast.error("VITE_SUPABASE_PUBLISHABLE_KEY is not configured in Vercel environment variables.");
+      toast.error("Supabase API key is not configured in Vercel environment variables.");
       return;
     }
     if (password.length < 8) {
@@ -72,7 +72,7 @@ export default function Auth() {
           <div className="space-y-0.5">
             <span className="font-bold">Supabase variables missing</span>
             <p className="opacity-90">
-              Authentication requires <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> in your Vercel project settings.
+              Authentication requires <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> (or <code>VITE_SUPABASE_PUBLISHABLE_KEY</code>) in your Vercel project settings.
             </p>
           </div>
         </div>

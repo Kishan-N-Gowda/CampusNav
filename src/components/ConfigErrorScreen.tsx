@@ -91,25 +91,25 @@ export const ConfigErrorScreen: React.FC<ConfigErrorScreenProps> = ({
               </div>
             </div>
 
-            {/* VITE_SUPABASE_PUBLISHABLE_KEY */}
+            {/* VITE_SUPABASE_PUBLISHABLE_KEY / VITE_SUPABASE_ANON_KEY */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 gap-2">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2">
                   <KeyRound className="h-4 w-4 text-muted-foreground" />
                   <code className="text-xs font-mono font-bold text-foreground">
-                    VITE_SUPABASE_PUBLISHABLE_KEY
+                    {status.hasKey ? status.keyVarName : "VITE_SUPABASE_ANON_KEY / VITE_SUPABASE_PUBLISHABLE_KEY"}
                   </code>
                 </div>
                 <div className="text-xs text-muted-foreground pl-6">
                   {status.hasKey
-                    ? `Configured: ${status.maskedKey}`
-                    : "Expected: Your Supabase Project anon / publishable API key"}
+                    ? `Configured via ${status.keyVarName}: ${status.maskedKey}`
+                    : "Expected: VITE_SUPABASE_ANON_KEY or VITE_SUPABASE_PUBLISHABLE_KEY (or SUPABASE_ANON_KEY)"}
                 </div>
               </div>
               <div className="sm:self-center pl-6 sm:pl-0">
                 {status.hasKey ? (
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Present
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Present ({status.keyVarName})
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-destructive bg-destructive/10 px-2.5 py-1 rounded-full border border-destructive/20">

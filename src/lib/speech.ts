@@ -1,4 +1,5 @@
 import type { Language } from "@/data/locations";
+import { isSupabaseConfigured, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/integrations/supabase/client";
 
 /* -------------------------------------------------------------------------- */
 /*  Voice preferences (persisted)                                             */
@@ -82,17 +83,10 @@ class CloudTTSProvider implements TTSProvider {
 
   private async fetchAudio(text: string, lang: Language): Promise<string | null> {
     if (Date.now() < this.pausedUntil) return null;
+    if (!isSupabaseConfigured) return null;
     try {
-      const baseUrl =
-        import.meta.env.VITE_SUPABASE_URL || "https://zqrkpfavuqnvwbqxwacc.supabase.co";
-      const anon =
-        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-        import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!anon) {
-        // No TTS backend key configured, gracefully fall back to device TTS
-        return null;
-      }
-      const url = `${baseUrl.replace(/\/$/, "")}/functions/v1/tts`;
+      const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/tts`;
+      const anon = SUPABASE_PUBLISHABLE_KEY;
       const res = await fetch(url, {
         method: "POST",
         headers: {
