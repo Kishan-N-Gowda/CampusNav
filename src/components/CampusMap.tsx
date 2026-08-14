@@ -450,15 +450,18 @@ export function CampusMap({
                 )}
               </button>
               {showLabels && (
-                <span
+                <button
+                  type="button"
+                  onClick={() => onPickLocation?.(l)}
                   className={cn(
-                    "pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-foreground shadow-soft backdrop-blur",
-                    (isFrom || isTo) && "text-[11px]"
+                    "absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-foreground shadow-soft backdrop-blur transition-transform hover:scale-105",
+                    (isFrom || isTo) && "text-[11px]",
+                    onPickLocation ? "cursor-pointer pointer-events-auto" : "pointer-events-none"
                   )}
                 >
                   <span className="mr-0.5">{emojiFor(l)}</span>
                   {l.name[labelLang]}
-                </span>
+                </button>
               )}
             </div>
           );

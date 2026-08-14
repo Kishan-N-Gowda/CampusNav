@@ -280,20 +280,18 @@ const Index = () => {
     else if (floors.length) setFloor(floors[0]);
   }, [from, floors, floorTouched]);
 
-  // Reset active step whenever the route endpoints change.
+  // Track user-triggered activeStep changes when stepping through TurnByTurnCard or Directions.
+  const prevActiveStepRef = useRef(activeStep);
   useEffect(() => {
-    setActiveStep(0);
-  }, [fromId, destId]);
-
-  // Auto-switch the displayed floor map to follow the active step.
-  useEffect(() => {
-    const s = steps[activeStep];
-    if (s && typeof s.floor === "number" && s.floor !== floor) {
-      setFloor(s.floor);
-      setFloorTouched(true);
+    if (prevActiveStepRef.current !== activeStep) {
+      prevActiveStepRef.current = activeStep;
+      const s = steps[activeStep];
+      if (s && typeof s.floor === "number" && s.floor !== floor) {
+        setFloor(s.floor);
+        setFloorTouched(true);
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStep, steps.length]);
+  }, [activeStep, steps, floor]);
 
   // Locations visible on the current floor (markers + map).
   // Hidden markers stay in the graph for routing but are never rendered.
@@ -768,6 +766,8 @@ const Index = () => {
 
   const handleSelectDestination = (id: string) => {
     setDestId(id);
+    setActiveStep(0);
+    prevActiveStepRef.current = 0;
     const loc = locations.find((l) => l.id === id);
     if (loc) {
       setFloor(loc.floor ?? 0);
@@ -780,6 +780,10 @@ const Index = () => {
   const handleOpenLocationDetail = (loc: CampusLocation) => {
     setModalLocation(loc);
     setModalOpen(true);
+    if (typeof loc.floor === "number") {
+      setFloor(loc.floor);
+      setFloorTouched(true);
+    }
   };
 
   const onPickFromMap = (loc: CampusLocation) => {
