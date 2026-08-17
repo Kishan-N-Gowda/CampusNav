@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import type { CampusLocation, CampusPath, PathPoint } from "@/data/locations";
-import { COORD_TO_METERS } from "@/data/locations";
+import { COORD_TO_METERS, getLocationName } from "@/data/locations";
 import { FloorSelector, floorLabel } from "@/components/FloorSelector";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -96,7 +96,16 @@ function polylineLengthMeters(
   return +(d * COORD_TO_METERS).toFixed(2);
 }
 
-export function PathDrawEditor({ mapSrc, floorMaps, locations, paths: allPaths }: Props) {
+export function PathDrawEditor({ mapSrc, floorMaps, locations = [], paths: allPaths = [] }: Props) {
+  const safeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter(Boolean) : []),
+    [locations]
+  );
+  const safeAllPaths = useMemo(
+    () => (Array.isArray(allPaths) ? allPaths.filter(Boolean) : []),
+    [allPaths]
+  );
+
   const [mode, setMode] = useState<"auto" | "manual">("manual");
   /** "draw" = click markers to create paths · "edit" = click paths to select/edit/delete */
   const [tool, setTool] = useState<"draw" | "edit">("draw");
@@ -107,16 +116,15 @@ export function PathDrawEditor({ mapSrc, floorMaps, locations, paths: allPaths }
   /** Locally removed paths — keeps the map in sync instantly after a delete. */
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const paths = useMemo(
-    () => allPaths.filter((p) => !deletedIds.includes(p.id)),
-    [allPaths, deletedIds]
+    () => safeAllPaths.filter((p) => !deletedIds.includes(p.id)),
+    [safeAllPaths, deletedIds]
   );
 
-
   const floors = useMemo(() => {
-    const set = new Set<number>(locations.map((l) => l.floor ?? 0));
+    const set = new Set<number>(safeLocations.map((l) => l.floor ?? 0));
     if (set.size === 0) set.add(0);
     return Array.from(set).sort((a, b) => a - b);
-  }, [locations]);
+  }, [safeLocations]);
   const [floor, setFloor] = useState<number>(0);
   useEffect(() => {
     if (floors.length && !floors.includes(floor)) setFloor(floors[0]);
@@ -127,9 +135,9 @@ export function PathDrawEditor({ mapSrc, floorMaps, locations, paths: allPaths }
       floors.map((f) => ({
         value: f,
         label: floorLabel(f),
-        count: locations.filter((l) => (l.floor ?? 0) === f).length,
+        count: safeLocations.filter((l) => (l.floor ?? 0) === f).length,
       })),
-    [floors, locations]
+    [floors, safeLocations]
   );
 
   const [draft, setDraft] = useState<DraftPath | null>(null);
@@ -155,14 +163,14 @@ export function PathDrawEditor({ mapSrc, floorMaps, locations, paths: allPaths }
     };
   }, [fullscreen]);
 
-  const byId = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
+  const byId = useMemo(() => new Map(safeLocations.map((l) => [l.id, l])), [safeLocations]);
 
   const visibleLocations = useMemo(
     () => {
-      const base = showHidden ? locations : locations.filter((l) => !l.hidden);
+      const base = showHidden ? safeLocations : safeLocations.filter((l) => !l.hidden);
       return showAllFloors ? base : base.filter((l) => (l.floor ?? 0) === floor);
     },
-    [locations, floor, showAllFloors, showHidden]
+    [safeLocations, floor, showAllFloors, showHidden]
   );
 
   const visiblePaths = useMemo(
@@ -738,11 +746,12 @@ export function PathDrawEditor({ mapSrc, floorMaps, locations, paths: allPaths }
           const isSrc = draft?.sourceId === l.id;
           const isDst = draft?.destId === l.id;
           const offFloor = (l.floor ?? 0) !== floor;
+          const locName = getLocationName(l, "en");
           return (
             <button
               key={l.id}
               type="button"
-              aria-label={l.name.en}
+              aria-label={locName}
               onClick={(e) => onMarkerClick(l, e)}
               className={cn(
                 "absolute -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform hover:scale-125 cursor-pointer",
@@ -765,7 +774,7 @@ export function PathDrawEditor({ mapSrc, floorMaps, locations, paths: allPaths }
                 />
               </span>
               <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-background/85 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-foreground shadow-soft backdrop-blur">
-                {l.name.en}
+                {locName}
               </span>
             </button>
           );
@@ -860,13 +869,15 @@ export function PathDrawEditor({ mapSrc, floorMaps, locations, paths: allPaths }
             if (!p) return null;
             const a = byId.get(p.source_id);
             const b = byId.get(p.destination_id);
+            const aName = a ? getLocationName(a, "en") : "?";
+            const bName = b ? getLocationName(b, "en") : "?";
             const pts = pointsFor(p);
             return (
               <>
                 <div className="text-xs">
-                  <span className="font-semibold">{a?.name.en ?? "?"}</span>
+                  <span className="font-semibold">{aName}</span>
                   <span className="mx-1 text-muted-foreground">→</span>
-                  <span className="font-semibold">{b?.name.en ?? "?"}</span>
+                  <span className="font-semibold">{bName}</span>
                   <span className="ml-2 text-muted-foreground">
                     · {pts.length} waypoint{pts.length === 1 ? "" : "s"} · {p.type === "connector" ? `F${p.floor}↔F${p.to_floor}` : `F${p.floor}`}
                   </span>

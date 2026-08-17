@@ -1,5 +1,5 @@
 import type { CampusLocation, CampusPath, Language } from "@/data/locations";
-import { COORD_TO_METERS, euclidean } from "@/data/locations";
+import { COORD_TO_METERS, euclidean, getLocationName } from "@/data/locations";
 
 export type TurnType =
   | "start"
@@ -25,7 +25,7 @@ export interface TurnInstruction {
   destinationFloor?: number;
 }
 
-export function floorLabelName(n: number, lang: Language): string {
+export function floorLabelName(n: number, lang: Language = "en"): string {
   const map: Record<number, { en: string; kn: string }> = {
     0: { en: "Ground floor", kn: "ನೆಲ ಮಹಡಿ" },
     1: { en: "1st floor", kn: "1ನೇ ಮಹಡಿ" },
@@ -33,10 +33,13 @@ export function floorLabelName(n: number, lang: Language): string {
     3: { en: "3rd floor", kn: "3ನೇ ಮಹಡಿ" },
   };
   const val = map[n] ?? { en: `Floor ${n}`, kn: `ಮಹಡಿ ${n}` };
-  return val[lang];
+  return val[lang] || val.en || `Floor ${n}`;
 }
 
-export function formatInstructionDistance(meters: number, lang: Language): string {
+export function formatInstructionDistance(meters: number, lang: Language = "en"): string {
+  if (!Number.isFinite(meters) || meters <= 0) {
+    return lang === "kn" ? "1 ಮೀ" : "1 m";
+  }
   if (meters >= 1000) {
     const km = (meters / 1000).toFixed(1);
     return lang === "kn" ? `${km} ಕಿ.ಮೀ` : `${km} km`;
@@ -55,10 +58,21 @@ export function generateNavigationInstructions(
   metersPerCoord: number = COORD_TO_METERS,
   lang: Language = "en"
 ): TurnInstruction[] {
-  if (route.length === 0) return [];
+  if (!Array.isArray(route) || route.length === 0) return [];
 
   const startLoc = route[0];
   const destLoc = route[route.length - 1];
+
+  if (!startLoc || !destLoc) return [];
+
+  const safeStartName = {
+    en: getLocationName(startLoc, "en"),
+    kn: getLocationName(startLoc, "kn"),
+  };
+  const safeDestName = {
+    en: getLocationName(destLoc, "en"),
+    kn: getLocationName(destLoc, "kn"),
+  };
 
   if (route.length === 1) {
     return [
@@ -66,8 +80,8 @@ export function generateNavigationInstructions(
         id: "inst-0",
         type: "arrive",
         title: {
-          en: `You have arrived at ${destLoc.name.en}`,
-          kn: `${destLoc.name.kn} ತಲುಪಿದ್ದೀರಿ`,
+          en: `You have arrived at ${safeDestName.en}`,
+          kn: `${safeDestName.kn} ತಲುಪಿದ್ದೀರಿ`,
         },
         subtitle: {
           en: floorLabelName(destLoc.floor ?? 0, "en"),
@@ -75,13 +89,14 @@ export function generateNavigationInstructions(
         },
         distanceMeters: 0,
         floor: destLoc.floor ?? 0,
-        point: { x: destLoc.x, y: destLoc.y },
-        targetLocationName: destLoc.name,
+        point: { x: destLoc.x ?? 50, y: destLoc.y ?? 50 },
+        targetLocationName: safeDestName,
       },
     ];
   }
 
   const instructions: TurnInstruction[] = [];
+  let stepCounter = 0;
 
   // Helper to check if a location is a connector/stair node
   const isConnectorNode = (loc?: CampusLocation) =>
@@ -96,16 +111,16 @@ export function generateNavigationInstructions(
   // 1. Start Instruction
   const startIsHidden = isConnectorNode(startLoc);
   instructions.push({
-    id: `inst-start`,
+    id: `inst-${++stepCounter}-start`,
     type: "start",
     title: {
-      en: startIsHidden ? "Start your route" : `Start at ${startLoc.name.en}`,
-      kn: startIsHidden ? "ನಿಮ್ಮ ಮಾರ್ಗವನ್ನು ಪ್ರಾರಂಭಿಸಿ" : `${startLoc.name.kn} ಇಂದ ಪ್ರಾರಂಭಿಸಿ`,
+      en: startIsHidden ? "Start your route" : `Start at ${safeStartName.en}`,
+      kn: startIsHidden ? "ನಿಮ್ಮ ಮಾರ್ಗವನ್ನು ಪ್ರಾರಂಭಿಸಿ" : `${safeStartName.kn} ಇಂದ ಪ್ರಾರಂಭಿಸಿ`,
     },
     distanceMeters: 0,
     floor: startLoc.floor ?? 0,
-    point: { x: startLoc.x, y: startLoc.y },
-    targetLocationName: startLoc.name,
+    point: { x: startLoc.x ?? 50, y: startLoc.y ?? 50 },
+    targetLocationName: safeStartName,
   });
 
   // Build the geometric points along the route
@@ -118,6 +133,8 @@ export function generateNavigationInstructions(
   for (let i = 0; i < route.length - 1; i++) {
     const a = route[i];
     const b = route[i + 1];
+    if (!a || !b) continue;
+
     const aFloor = a.floor ?? 0;
     const bFloor = b.floor ?? 0;
 
@@ -125,19 +142,22 @@ export function generateNavigationInstructions(
       legs.push({ kind: "connector", fromLoc: a, toLoc: b });
     } else {
       // Find connecting path for intermediate waypoints
-      const edge = paths.find(
-        (p) =>
-          (p.source_id === a.id && p.destination_id === b.id) ||
-          (p.source_id === b.id && p.destination_id === a.id)
-      );
+      const edge = Array.isArray(paths)
+        ? paths.find(
+            (p) =>
+              p &&
+              ((p.source_id === a.id && p.destination_id === b.id) ||
+                (p.source_id === b.id && p.destination_id === a.id))
+          )
+        : undefined;
 
-      let pts: { x: number; y: number }[] = [{ x: a.x, y: a.y }];
-      if (edge && edge.points && edge.points.length > 0) {
+      let pts: { x: number; y: number }[] = [{ x: a.x ?? 50, y: a.y ?? 50 }];
+      if (edge && Array.isArray(edge.points) && edge.points.length > 0) {
         const oriented =
           edge.source_id === a.id ? edge.points : [...edge.points].reverse();
-        pts.push(...oriented);
+        pts.push(...oriented.filter((pt) => pt && Number.isFinite(pt.x) && Number.isFinite(pt.y)));
       }
-      pts.push({ x: b.x, y: b.y });
+      pts.push({ x: b.x ?? 50, y: b.y ?? 50 });
 
       // Merge with previous leg if it was on the same floor
       const lastLeg = legs[legs.length - 1];
@@ -146,7 +166,7 @@ export function generateNavigationInstructions(
         for (let j = 1; j < pts.length; j++) {
           const prevPt = lastLeg.points[lastLeg.points.length - 1];
           const curPt = pts[j];
-          if (euclidean(prevPt, curPt) > 0.01) {
+          if (prevPt && curPt && euclidean(prevPt, curPt) > 0.01) {
             lastLeg.points.push(curPt);
           }
         }
@@ -180,15 +200,16 @@ export function generateNavigationInstructions(
   };
 
   // Process legs into instructions
-  legs.forEach((leg) => {
+  legs.forEach((leg, legIndex) => {
     if (leg.kind === "connector") {
       const { fromLoc, toLoc } = leg;
-      const targetFloor = toLoc.floor ?? 0;
+      const targetFloor = toLoc?.floor ?? 0;
+      const fromNameStr = getLocationName(fromLoc, "en").toLowerCase();
       const isElevator =
-        fromLoc.name.en.toLowerCase().includes("elevator") ||
-        fromLoc.name.en.toLowerCase().includes("lift") ||
-        fromLoc.category === "lift" ||
-        fromLoc.category === "elevator";
+        fromNameStr.includes("elevator") ||
+        fromNameStr.includes("lift") ||
+        fromLoc?.category === "lift" ||
+        fromLoc?.category === "elevator";
 
       const floorEn = floorLabelName(targetFloor, "en");
       const floorKn = floorLabelName(targetFloor, "kn");
@@ -201,13 +222,16 @@ export function generateNavigationInstructions(
         : `${floorKn}ಗೆ ಮೆಟ್ಟಿಲುಗಳನ್ನು ಬಳಸಿ ಹೋಗಿ`;
 
       instructions.push({
-        id: `inst-conn-${fromLoc.id}-${toLoc.id}`,
+        id: `inst-${++stepCounter}-conn-${fromLoc.id}-${toLoc.id}`,
         type: "connector",
         title: { en: titleEn, kn: titleKn },
         distanceMeters: 0,
         floor: fromLoc.floor ?? 0,
-        point: { x: fromLoc.x, y: fromLoc.y },
-        targetLocationName: toLoc.name,
+        point: { x: fromLoc.x ?? 50, y: fromLoc.y ?? 50 },
+        targetLocationName: {
+          en: getLocationName(toLoc, "en"),
+          kn: getLocationName(toLoc, "kn"),
+        },
         destinationFloor: targetFloor,
       });
       return;
@@ -224,8 +248,10 @@ export function generateNavigationInstructions(
     for (let j = 0; j < pts.length - 1; j++) {
       const p1 = pts[j];
       const p2 = pts[j + 1];
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
+      if (!p1 || !p2) continue;
+
+      const dx = (p2.x ?? 0) - (p1.x ?? 0);
+      const dy = (p2.y ?? 0) - (p1.y ?? 0);
       const distCoord = Math.sqrt(dx * dx + dy * dy);
       if (distCoord < 0.001) continue;
 
@@ -249,7 +275,7 @@ export function generateNavigationInstructions(
         // 1. Emit preceding walk instruction if distance >= 2m
         if (accumMeters >= 2) {
           instructions.push({
-            id: `inst-walk-${j}`,
+            id: `inst-${++stepCounter}-walk-leg${legIndex}-pt${j}`,
             type: "straight",
             title: {
               en: `Walk straight for ${formatInstructionDistance(accumMeters, "en")}`,
@@ -297,17 +323,17 @@ export function generateNavigationInstructions(
         }
 
         instructions.push({
-          id: `inst-turn-${j}`,
+          id: `inst-${++stepCounter}-turn-leg${legIndex}-pt${j}`,
           type: turn.type,
           title: { en: turnTitleEn, kn: turnTitleKn },
           distanceMeters: 0,
           floor: leg.floor,
-          point: { x: p1.x, y: p1.y },
+          point: { x: p1.x ?? 50, y: p1.y ?? 50 },
         });
 
         // Reset tracking for the segment following the turn
         accumMeters = distM;
-        legStartPt = { x: p1.x, y: p1.y };
+        legStartPt = { x: p1.x ?? 50, y: p1.y ?? 50 };
         prevVector = curVector;
       }
     }
@@ -315,7 +341,7 @@ export function generateNavigationInstructions(
     // Flush remaining accumulated distance at end of floor leg
     if (accumMeters >= 2) {
       instructions.push({
-        id: `inst-walk-end-${leg.floor}`,
+        id: `inst-${++stepCounter}-walk-end-leg${legIndex}`,
         type: "straight",
         title: {
           en: `Walk straight for ${formatInstructionDistance(accumMeters, "en")}`,
@@ -334,13 +360,13 @@ export function generateNavigationInstructions(
 
   // 3. Final Arrival Instruction
   const destIsHidden = isConnectorNode(destLoc);
-  const destNameEn = destIsHidden ? "your destination" : destLoc.name.en;
-  const destNameKn = destIsHidden ? "ನಿಮ್ಮ ತಲುಪುವ ಸ್ಥಳ" : destLoc.name.kn;
+  const destNameEn = destIsHidden ? "your destination" : safeDestName.en;
+  const destNameKn = destIsHidden ? "ನಿಮ್ಮ ತಲುಪುವ ಸ್ಥಳ" : safeDestName.kn;
   const destFloorEn = floorLabelName(destLoc.floor ?? 0, "en");
   const destFloorKn = floorLabelName(destLoc.floor ?? 0, "kn");
 
   instructions.push({
-    id: `inst-arrive`,
+    id: `inst-${++stepCounter}-arrive`,
     type: "arrive",
     title: {
       en: `You have arrived at ${destNameEn}`,
@@ -352,8 +378,8 @@ export function generateNavigationInstructions(
     },
     distanceMeters: 0,
     floor: destLoc.floor ?? 0,
-    point: { x: destLoc.x, y: destLoc.y },
-    targetLocationName: destLoc.name,
+    point: { x: destLoc.x ?? 50, y: destLoc.y ?? 50 },
+    targetLocationName: safeDestName,
     destinationFloor: destLoc.floor ?? 0,
   });
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Search, MapPin, Mic } from "lucide-react";
 import type { CampusLocation, Language } from "@/data/locations";
+import { getLocationName } from "@/data/locations";
 import { cn } from "@/lib/utils";
 import { createRecognizer } from "@/lib/speech";
 import { toast } from "sonner";
@@ -28,19 +29,20 @@ export function DestinationSearch({
   const [open, setOpen] = useState(false);
   const [listening, setListening] = useState(false);
 
+  const safeLocations = Array.isArray(locations) ? locations : [];
   const q = query.trim().toLowerCase();
-  const selectable = locations.filter((l) => !l.hidden);
+  const selectable = safeLocations.filter((l) => l && !l.hidden);
   const filtered = q
     ? selectable.filter(
         (l) =>
-          l.name[lang].toLowerCase().includes(q) ||
-          l.name.en.toLowerCase().includes(q) ||
-          l.slug.toLowerCase().includes(q) ||
-          l.category.toLowerCase().includes(q)
+          getLocationName(l, lang).toLowerCase().includes(q) ||
+          getLocationName(l, "en").toLowerCase().includes(q) ||
+          (l.slug && l.slug.toLowerCase().includes(q)) ||
+          (l.category && l.category.toLowerCase().includes(q))
       )
     : selectable.slice(0, 8);
 
-  const selected = locations.find((l) => l.id === value);
+  const selected = safeLocations.find((l) => l && l.id === value);
 
   const tryMatch = (text: string) => {
     const lc = text.toLowerCase().trim();
@@ -63,10 +65,10 @@ export function DestinationSearch({
 
     // Score each location against the spoken phrase.
     const score = (l: CampusLocation) => {
-      const en = l.name.en.toLowerCase();
-      const kn = l.name.kn;
-      const slug = l.slug.toLowerCase();
-      const cat = l.category.toLowerCase();
+      const en = getLocationName(l, "en").toLowerCase();
+      const kn = getLocationName(l, "kn").toLowerCase();
+      const slug = (l.slug || "").toLowerCase();
+      const cat = (l.category || "").toLowerCase();
       if (en === cleaned || kn === cleaned || slug === cleaned) return 100;
       if (en.includes(cleaned) || kn.includes(cleaned) || slug.includes(cleaned)) return 80;
       if (cleaned.includes(en) || cleaned.includes(kn)) return 70;
@@ -81,7 +83,7 @@ export function DestinationSearch({
     };
 
     let best: { l: CampusLocation; s: number } | null = null;
-    for (const l of locations) {
+    for (const l of selectable) {
       const s = score(l);
       if (s > 0 && (!best || s > best.s)) best = { l, s };
     }
@@ -89,7 +91,7 @@ export function DestinationSearch({
     if (best && best.s >= 20) {
       onSelect(best.l.id);
       setQuery("");
-      toast.success(`→ ${best.l.name[lang]}`);
+      toast.success(`→ ${getLocationName(best.l, lang)}`);
     } else {
       setQuery(cleaned);
       setOpen(true);
@@ -122,7 +124,7 @@ export function DestinationSearch({
         <input
           type="text"
           value={query}
-          placeholder={selected ? selected.name[lang] : placeholder}
+          placeholder={selected ? getLocationName(selected, lang) : placeholder}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           onChange={(e) => {
@@ -174,10 +176,9 @@ export function DestinationSearch({
                     <MapPin className="h-4 w-4" />
                   </span>
                   <span className="flex flex-col">
-                    <span className="text-sm font-semibold">{l.name[lang]}</span>
-                    <span className="text-[11px] capitalize text-muted-foreground">
-                      {l.category}
-                      {l.floor ? ` · Floor ${l.floor}` : ""}
+                    <span className="text-sm font-semibold">{getLocationName(l, lang)}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      Floor {l.floor ?? 0}
                     </span>
                   </span>
                 </button>

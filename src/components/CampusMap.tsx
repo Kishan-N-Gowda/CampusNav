@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, EyeOff, LocateFixed, Maximize2, Minus, Plus, Satellite, Tag, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { CampusLocation, CampusPath, Language } from "@/data/locations";
+import type { CampusLocation, Language } from "@/data/locations";
+import { getLocationName } from "@/data/locations";
 import { cn } from "@/lib/utils";
 
 interface RouteSegment {
@@ -76,7 +77,6 @@ interface Props {
   onUserPan?: () => void;
 }
 
-
 const CATEGORY_EMOJI: Record<string, string> = {
   facility: "🏛️",
   academic: "🎓",
@@ -90,21 +90,21 @@ const CATEGORY_EMOJI: Record<string, string> = {
 };
 
 function emojiFor(loc: CampusLocation): string {
-  const slug = loc.slug.toLowerCase();
+  const slug = (loc.slug || "").toLowerCase();
   if (slug.includes("library")) return "📚";
   if (slug.includes("canteen") || slug.includes("mess")) return "🍽️";
   if (slug.includes("hostel")) return "🏠";
   if (slug.includes("admin")) return "🏢";
   if (slug.includes("audit")) return "🎭";
   if (slug.includes("sport") || slug.includes("gym")) return "🏃";
-  return CATEGORY_EMOJI[loc.category] ?? "📍";
+  return CATEGORY_EMOJI[loc.category || ""] ?? "📍";
 }
 
 export function CampusMap({
   mapSrc,
-  locations,
+  locations = [],
   currentFloor = 0,
-  route,
+  route = [],
   routeSegments,
   travelledSegments,
   crossFloorConnectors,
@@ -134,27 +134,35 @@ export function CampusMap({
   followEnabled,
   followZoom = 2.2,
   onUserPan,
-
 }: Props) {
+  const safeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter(Boolean) : []),
+    [locations]
+  );
+  const safeRoute = useMemo(
+    () => (Array.isArray(route) ? route.filter(Boolean) : []),
+    [route]
+  );
+
   const from =
-    route[0] ??
+    safeRoute[0] ??
     (currentLocationId
-      ? locations.find((l) => l.id === currentLocationId)
+      ? safeLocations.find((l) => l.id === currentLocationId)
       : undefined);
-  const to = route[route.length - 1];
+  const to = safeRoute[safeRoute.length - 1];
 
   // Active floor transition text for current floor (e.g. "↑ Take Stairs → 2nd Floor")
   const activeFloorTransition = useMemo(() => {
     if (!crossFloorConnectors || crossFloorConnectors.length === 0) return null;
     const conn = crossFloorConnectors.find(
-      (c) => c.fromFloor === currentFloor || c.toFloor === currentFloor
+      (c) => c && (c.fromFloor === currentFloor || c.toFloor === currentFloor)
     );
     if (!conn) return null;
     const isDeparture = conn.fromFloor === currentFloor;
     const targetFloor = isDeparture ? conn.toFloor : conn.fromFloor;
     if (targetFloor == null) return null;
 
-    const isUp = isDeparture ? conn.toFloor! > conn.fromFloor! : conn.fromFloor! > conn.toFloor!;
+    const isUp = isDeparture ? (conn.toFloor ?? 0) > (conn.fromFloor ?? 0) : (conn.fromFloor ?? 0) > (conn.toFloor ?? 0);
     const arrow = isUp ? "↑" : "↓";
     const targetName =
       targetFloor === 0
@@ -179,8 +187,6 @@ export function CampusMap({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
 
-  // Track the rendered image rect inside the container so markers/paths align
-  // with the actual map pixels (image uses object-contain → letterboxed).
   const imgRef = useRef<HTMLImageElement>(null);
   const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null);
   const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
@@ -207,17 +213,15 @@ export function CampusMap({
     if (!imgNatural || !containerSize.w || !containerSize.h) {
       return { position: "absolute", inset: 0 };
     }
-    const cR = containerSize.w / containerSize.h;
-    const iR = imgNatural.w / imgNatural.h;
+    const cR = containerSize.w / Math.max(containerSize.h, 1);
+    const iR = imgNatural.w / Math.max(imgNatural.h, 1);
     let w: number, h: number, left: number, top: number;
     if (iR > cR) {
-      // image is wider — letterboxed top/bottom
       w = containerSize.w;
       h = containerSize.w / iR;
       left = 0;
       top = (containerSize.h - h) / 2;
     } else {
-      // image is taller — letterboxed left/right
       h = containerSize.h;
       w = containerSize.h * iR;
       top = 0;
@@ -228,15 +232,20 @@ export function CampusMap({
 
   const segments: RouteSegment[] = useMemo(() => {
     if (routeSegments && routeSegments.length) {
-      return routeSegments.filter((s) => s.length >= 2).map((pts) => ({ pts }));
+      return routeSegments
+        .filter((s) => Array.isArray(s) && s.length >= 2)
+        .map((pts) => ({ pts }));
     }
-    return route.length >= 2 ? [{ pts: route }] : [];
-  }, [routeSegments, route]);
+    return safeRoute.length >= 2 ? [{ pts: safeRoute.map((r) => ({ x: r.x, y: r.y })) }] : [];
+  }, [routeSegments, safeRoute]);
 
   const segmentPaths = useMemo(
     () =>
       segments.map((s) =>
-        s.pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ")
+        s.pts
+          .filter((p) => p && typeof p.x === "number" && typeof p.y === "number")
+          .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+          .join(" ")
       ),
     [segments]
   );
@@ -244,14 +253,17 @@ export function CampusMap({
   const travelledPaths = useMemo(
     () =>
       (travelledSegments ?? [])
-        .filter((s) => s.length >= 2)
-        .map((s) => s.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ")),
+        .filter((s) => Array.isArray(s) && s.length >= 2)
+        .map((s) =>
+          s
+            .filter((p) => p && typeof p.x === "number" && typeof p.y === "number")
+            .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+            .join(" ")
+        ),
     [travelledSegments]
   );
 
-  // ---- Follow mode camera ------------------------------------------------
-  // Keep the live puck centred while following. Any manual pan/zoom releases
-  // follow mode through onUserPan.
+  // ---- Follow mode camera ----
   useEffect(() => {
     if (!followEnabled) return;
     setZoom((z) => (z < followZoom ? followZoom : z));
@@ -299,10 +311,6 @@ export function CampusMap({
     setZoom((z) => Math.min(4, Math.max(1, z + delta)));
   };
 
-  // The route polylines no longer carry location ids; from/to highlights come
-  // from the `from` / `to` markers above. Waypoint dots are not drawn.
-  const routeIds = useMemo(() => new Set<string>(), []);
-
   return (
     <div
       ref={containerRef}
@@ -318,7 +326,6 @@ export function CampusMap({
       onWheel={onWheel}
       style={{ touchAction: panAllowed ? "none" : "auto", cursor: panAllowed ? "grab" : "default" }}
     >
-
       <div
         className="absolute inset-0 origin-center transition-transform duration-200 ease-out"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
@@ -338,217 +345,219 @@ export function CampusMap({
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-secondary/10" />
 
         <div style={overlayStyle}>
-
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          className="absolute inset-0 h-full w-full"
-        >
-          {/* Walkable paths underlay (polylines) */}
-          {walkablePaths?.map((p, i) => (
-            <polyline
-              key={`wp-${i}`}
-              points={p.points.map((pt) => `${pt.x},${pt.y}`).join(" ")}
-              fill="none"
-              stroke="hsl(var(--foreground))"
-              strokeOpacity={0.18}
-              strokeWidth={0.7}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-
-          {/* Already-walked portion (dimmed) */}
-          {showPath &&
-            travelledPaths.map((d, i) => (
-              <path
-                key={`trav-${i}`}
-                d={d}
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full"
+          >
+            {/* Walkable paths underlay (polylines) */}
+            {walkablePaths?.map((p, i) => (
+              <polyline
+                key={`wp-${i}`}
+                points={p.points.map((pt) => `${pt.x},${pt.y}`).join(" ")}
                 fill="none"
-                stroke="hsl(var(--muted-foreground))"
-                strokeOpacity={0.45}
-                strokeWidth="1.4"
+                stroke="hsl(var(--foreground))"
+                strokeOpacity={0.18}
+                strokeWidth={0.7}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
               />
             ))}
 
-          {/* Active route segments (bold blue) */}
-
-          {showPath &&
-            segmentPaths.map((d, i) => (
-              <g key={`seg-${i}`}>
+            {/* Already-walked portion (dimmed) */}
+            {showPath &&
+              travelledPaths.map((d, i) => (
                 <path
+                  key={`trav-${i}`}
                   d={d}
                   fill="none"
-                  stroke="hsl(var(--primary))"
-                  strokeOpacity={0.22}
-                  strokeWidth="2.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                />
-                <path
-                  key={`path-${i}-${d.length}`}
-                  d={d}
-                  fill="none"
-                  stroke="hsl(var(--primary))"
+                  stroke="hsl(var(--muted-foreground))"
+                  strokeOpacity={0.45}
                   strokeWidth="1.4"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   vectorEffect="non-scaling-stroke"
-                  style={{ filter: "drop-shadow(0 0 4px hsl(var(--primary)))" }}
-                  className="animate-draw-path"
                 />
-              </g>
-            ))}
-        </svg>
+              ))}
 
-        {locations.map((l) => {
-          const isFrom = l.id === from?.id;
-          const isTo = l.id === to?.id;
-          if (l.hidden && !isFrom && !isTo) return null;
-          const isWaypoint = !isFrom && !isTo && showPath && routeIds.has(l.id);
-          return (
-            <div
-              key={l.id}
-              className={cn(
-                "absolute -translate-x-1/2 -translate-y-1/2",
-                isFrom || isTo ? "z-20" : "z-10"
-              )}
-              style={{ left: `${l.x}%`, top: `${l.y}%` }}
-            >
-              <button
-                type="button"
-                aria-label={l.name.en}
-                onClick={() => onPickLocation?.(l)}
-                className={cn(
-                  "block rounded-full transition-transform",
-                  !(isFrom || isTo) && "hover:scale-150",
-                  onPickLocation ? "cursor-pointer" : "pointer-events-none"
-                )}
-              >
-                {isFrom ? (
-                  <span className="relative block">
-                    <span className="absolute inset-0 -m-3 rounded-full bg-primary/30 animate-pulse-dot" />
-                    <span className="relative block h-4 w-4 rounded-full bg-primary ring-4 ring-background shadow-glow" />
-                  </span>
-                ) : isTo ? (
-                  <svg width="28" height="36" viewBox="0 0 28 36" className="-translate-y-1/2 drop-shadow-lg">
-                    <path
-                      d="M14 0 C6 0 0 6 0 14 C0 24 14 36 14 36 C14 36 28 24 28 14 C28 6 22 0 14 0 Z"
-                      fill="hsl(var(--accent))"
-                    />
-                    <circle cx="14" cy="14" r="5" fill="white" />
-                  </svg>
-                ) : isWaypoint ? (
-                  <span className="block h-2.5 w-2.5 rounded-full bg-primary/80 ring-2 ring-background" />
-                ) : (
-                  <span className="block h-2 w-2 rounded-full bg-foreground/40 ring-1 ring-background" />
-                )}
-              </button>
-              {showLabels && (
-                <button
-                  type="button"
-                  onClick={() => onPickLocation?.(l)}
-                  className={cn(
-                    "absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-foreground shadow-soft backdrop-blur transition-transform hover:scale-105",
-                    (isFrom || isTo) && "text-[11px]",
-                    onPickLocation ? "cursor-pointer pointer-events-auto" : "pointer-events-none"
-                  )}
-                >
-                  <span className="mr-0.5">{emojiFor(l)}</span>
-                  {l.name[labelLang]}
-                </button>
-              )}
-            </div>
-          );
-        })}
+            {/* Active route segments (bold blue) */}
+            {showPath &&
+              segmentPaths.map((d, i) => (
+                <g key={`seg-${i}`}>
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke="hsl(var(--primary))"
+                    strokeOpacity={0.22}
+                    strokeWidth="2.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  <path
+                    key={`path-${i}-${d.length}`}
+                    d={d}
+                    fill="none"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    style={{ filter: "drop-shadow(0 0 4px hsl(var(--primary)))" }}
+                    className="animate-draw-path"
+                  />
+                </g>
+              ))}
+          </svg>
 
-        {/* Floor-Transition Pink Dot Indicator on map */}
-        {showPath &&
-          crossFloorConnectors?.map((c, i) => {
-            const isDeparture = c.fromFloor === currentFloor;
-            const isArrival = c.toFloor === currentFloor;
-            if (!isDeparture && !isArrival) return null;
-
-            const x = isDeparture ? c.x1 : c.x2;
-            const y = isDeparture ? c.y1 : c.y2;
+          {safeLocations.map((l) => {
+            if (!l) return null;
+            const isFrom = l.id === from?.id;
+            const isTo = l.id === to?.id;
+            if (l.hidden && !isFrom && !isTo) return null;
+            const locName = getLocationName(l, labelLang);
 
             return (
               <div
-                key={`stair-dot-${i}`}
-                className="pointer-events-none absolute z-25 -translate-x-1/2 -translate-y-1/2"
-                style={{ left: `${x}%`, top: `${y}%` }}
+                key={l.id}
+                className={cn(
+                  "absolute -translate-x-1/2 -translate-y-1/2",
+                  isFrom || isTo ? "z-20" : "z-10"
+                )}
+                style={{ left: `${l.x}%`, top: `${l.y}%` }}
               >
-                <span className="relative flex h-3.5 w-3.5 items-center justify-center">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pink-500/60 opacity-80" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-pink-500 ring-2 ring-background shadow-md" />
-                </span>
+                <button
+                  type="button"
+                  aria-label={locName}
+                  onClick={() => onPickLocation?.(l)}
+                  className={cn(
+                    "block rounded-full transition-transform",
+                    !(isFrom || isTo) && "hover:scale-150",
+                    onPickLocation ? "cursor-pointer" : "pointer-events-none"
+                  )}
+                >
+                  {isFrom ? (
+                    <span className="relative block">
+                      <span className="absolute inset-0 -m-3 rounded-full bg-primary/30 animate-pulse-dot" />
+                      <span className="relative block h-4 w-4 rounded-full bg-primary ring-4 ring-background shadow-glow" />
+                    </span>
+                  ) : isTo ? (
+                    <svg width="28" height="36" viewBox="0 0 28 36" className="-translate-y-1/2 drop-shadow-lg">
+                      <path
+                        d="M14 0 C6 0 0 6 0 14 C0 24 14 36 14 36 C14 36 28 24 28 14 C28 6 22 0 14 0 Z"
+                        fill="hsl(var(--accent))"
+                      />
+                      <circle cx="14" cy="14" r="5" fill="white" />
+                    </svg>
+                  ) : (
+                    <span className="block h-2 w-2 rounded-full bg-foreground/40 ring-1 ring-background" />
+                  )}
+                </button>
+                {showLabels && (
+                  <button
+                    type="button"
+                    onClick={() => onPickLocation?.(l)}
+                    className={cn(
+                      "absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-foreground shadow-soft backdrop-blur transition-transform hover:scale-105",
+                      (isFrom || isTo) && "text-[11px]",
+                      onPickLocation ? "cursor-pointer pointer-events-auto" : "pointer-events-none"
+                    )}
+                  >
+                    <span className="mr-0.5">{emojiFor(l)}</span>
+                    {locName}
+                  </button>
+                )}
               </div>
             );
           })}
-        {liveMarker && (
-          <div
-            className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-300 ease-out"
-            style={{ left: `${liveMarker.x}%`, top: `${liveMarker.y}%` }}
-          >
-            <span className="relative block">
-              {/* Accuracy halo (real GPS) — sized to GPS accuracy */}
-              {liveIsReal && liveAccuracyCoord != null && liveAccuracyCoord > 0 && (
-                <span
-                  aria-hidden
-                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/15 ring-1 ring-primary/30"
-                  style={{
-                    // Convert coord units → CSS px using the overlay size.
-                    width: `${(liveAccuracyCoord / 100) * (overlayStyle.width as number || 0) * 2}px`,
-                    height: `${(liveAccuracyCoord / 100) * (overlayStyle.height as number || 0) * 2}px`,
-                    minWidth: "20px",
-                    minHeight: "20px",
-                    maxWidth: "400px",
-                    maxHeight: "400px",
-                  }}
-                />
-              )}
-              {/* Heading cone */}
-              {typeof liveHeading === "number" && (
-                <svg
-                  aria-hidden
-                  width="64"
-                  height="64"
-                  viewBox="-32 -32 64 64"
-                  className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-                  style={{ transform: `translate(-50%, -50%) rotate(${liveHeading}deg)` }}
+
+          {/* Floor-Transition Pink Dot Indicator on map */}
+          {showPath &&
+            crossFloorConnectors?.map((c, i) => {
+              if (!c) return null;
+              const isDeparture = c.fromFloor === currentFloor;
+              const isArrival = c.toFloor === currentFloor;
+              if (!isDeparture && !isArrival) return null;
+
+              const x = isDeparture ? c.x1 : c.x2;
+              const y = isDeparture ? c.y1 : c.y2;
+
+              if (typeof x !== "number" || typeof y !== "number") return null;
+
+              return (
+                <div
+                  key={`stair-dot-${i}`}
+                  className="pointer-events-none absolute z-25 -translate-x-1/2 -translate-y-1/2"
+                  style={{ left: `${x}%`, top: `${y}%` }}
                 >
-                  <defs>
-                    <radialGradient id="liveCone" cx="50%" cy="100%" r="100%">
-                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.7" />
-                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
-                    </radialGradient>
-                  </defs>
-                  <path d="M 0 0 L -14 -30 A 32 32 0 0 1 14 -30 Z" fill="url(#liveCone)" />
-                </svg>
-              )}
-              <span className="absolute inset-0 -m-3 rounded-full bg-primary/25 animate-pulse-dot" />
-              <span className="relative block h-4 w-4 rounded-full bg-primary ring-[3px] ring-background shadow-glow" />
-            </span>
-          </div>
-        )}
-        {pickOnMap && onMapTap && (
-          <button
-            type="button"
-            aria-label="Tap to pick a point on the map"
-            className="absolute inset-0 z-40 cursor-crosshair bg-primary/5"
-            onClick={(e) => {
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              const x = ((e.clientX - r.left) / r.width) * 100;
-              const y = ((e.clientY - r.top) / r.height) * 100;
-              onMapTap({ x, y });
-            }}
-          />
-        )}
+                  <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-pink-500/60 opacity-80" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-pink-500 ring-2 ring-background shadow-md" />
+                  </span>
+                </div>
+              );
+            })}
+
+          {liveMarker && (
+            <div
+              className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 transition-[left,top] duration-300 ease-out"
+              style={{ left: `${liveMarker.x}%`, top: `${liveMarker.y}%` }}
+            >
+              <span className="relative block">
+                {/* Accuracy halo (real GPS) — sized to GPS accuracy */}
+                {liveIsReal && liveAccuracyCoord != null && liveAccuracyCoord > 0 && (
+                  <span
+                    aria-hidden
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/15 ring-1 ring-primary/30"
+                    style={{
+                      width: `${(liveAccuracyCoord / 100) * ((overlayStyle.width as number) || 0) * 2}px`,
+                      height: `${(liveAccuracyCoord / 100) * ((overlayStyle.height as number) || 0) * 2}px`,
+                      minWidth: "20px",
+                      minHeight: "20px",
+                      maxWidth: "400px",
+                      maxHeight: "400px",
+                    }}
+                  />
+                )}
+                {/* Heading cone */}
+                {typeof liveHeading === "number" && (
+                  <svg
+                    aria-hidden
+                    width="64"
+                    height="64"
+                    viewBox="-32 -32 64 64"
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+                    style={{ transform: `translate(-50%, -50%) rotate(${liveHeading}deg)` }}
+                  >
+                    <defs>
+                      <radialGradient id="liveCone" cx="50%" cy="100%" r="100%">
+                        <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.7" />
+                        <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+                      </radialGradient>
+                    </defs>
+                    <path d="M 0 0 L -14 -30 A 32 32 0 0 1 14 -30 Z" fill="url(#liveCone)" />
+                  </svg>
+                )}
+                <span className="absolute inset-0 -m-3 rounded-full bg-primary/25 animate-pulse-dot" />
+                <span className="relative block h-4 w-4 rounded-full bg-primary ring-[3px] ring-background shadow-glow" />
+              </span>
+            </div>
+          )}
+
+          {pickOnMap && onMapTap && (
+            <button
+              type="button"
+              aria-label="Tap to pick a point on the map"
+              className="absolute inset-0 z-40 cursor-crosshair bg-primary/5"
+              onClick={(e) => {
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const x = ((e.clientX - r.left) / r.width) * 100;
+                const y = ((e.clientY - r.top) / r.height) * 100;
+                onMapTap({ x, y });
+              }}
+            />
+          )}
         </div>
       </div>
 

@@ -53,11 +53,23 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  if (instructions.length === 0) return null;
+  if (!Array.isArray(instructions) || instructions.length === 0) return null;
 
-  const activeIdx = Math.min(Math.max(0, activeIndex), instructions.length - 1);
+  const activeIdx = Math.min(Math.max(0, activeIndex || 0), instructions.length - 1);
   const currentInst = instructions[activeIdx];
+  if (!currentInst) return null;
+
   const nextInst = activeIdx < instructions.length - 1 ? instructions[activeIdx + 1] : null;
+
+  const getTitle = (inst?: TurnInstruction | null) => {
+    if (!inst || !inst.title) return "";
+    return inst.title[lang] || inst.title.en || "";
+  };
+
+  const getSubtitle = (inst?: TurnInstruction | null) => {
+    if (!inst || !inst.subtitle) return "";
+    return inst.subtitle[lang] || inst.subtitle.en || "";
+  };
 
   const getInstructionIcon = (type: TurnInstruction["type"], sizeClass: string = "h-5 w-5") => {
     switch (type) {
@@ -99,7 +111,7 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
                 {lang === "kn" ? "ನೀವು ತಲುಪಿದ್ದೀರಿ" : "You have arrived"}
               </span>
               <h3 className="font-display text-base font-bold text-foreground">
-                {destinationName}
+                {destinationName || "Destination"}
               </h3>
               {destinationFloorLabel && (
                 <p className="text-[11px] text-muted-foreground font-medium">
@@ -123,6 +135,9 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
       </div>
     );
   }
+
+  const currentTitle = getTitle(currentInst);
+  const currentSubtitle = getSubtitle(currentInst);
 
   // Collapsed View (compact banner)
   if (!isExpanded) {
@@ -150,15 +165,15 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <span className="font-display text-sm font-bold text-foreground truncate">
-                  {currentInst.title[lang]}
+                  {currentTitle}
                 </span>
                 <span className="text-[11px] font-semibold text-primary shrink-0">
                   {activeIdx + 1}/{instructions.length}
                 </span>
               </div>
-              {currentInst.subtitle && (
+              {currentSubtitle && (
                 <p className="text-[11px] font-medium text-muted-foreground truncate">
-                  {currentInst.subtitle[lang]}
+                  {currentSubtitle}
                 </p>
               )}
             </div>
@@ -218,7 +233,7 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
         <Badge variant="outline" className="gap-1.5 border-primary/30 bg-primary/10 text-primary font-bold text-xs truncate">
           <Compass className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">
-            {lang === "kn" ? `ನ್ಯಾವಿಗೇಟ್: ${destinationName}` : `Navigating to ${destinationName}`}
+            {lang === "kn" ? `ನ್ಯಾವಿಗೇಟ್: ${destinationName || ""}` : `Navigating to ${destinationName || ""}`}
           </span>
         </Badge>
         <div className="flex items-center gap-1 shrink-0">
@@ -259,11 +274,11 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-display text-sm font-bold text-foreground leading-snug">
-            {currentInst.title[lang]}
+            {currentTitle}
           </h4>
-          {currentInst.subtitle && (
+          {currentSubtitle && (
             <p className="mt-0.5 text-xs font-semibold text-primary">
-              {currentInst.subtitle[lang]}
+              {currentSubtitle}
             </p>
           )}
         </div>
@@ -276,7 +291,7 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
             {lang === "kn" ? "ನಂತರ" : "Then"}
           </span>
           <span className="truncate text-foreground font-medium">
-            {nextInst.title[lang]}
+            {getTitle(nextInst)}
           </span>
         </div>
       )}
@@ -285,9 +300,10 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
       <div className="overflow-y-auto max-h-48 pr-1 space-y-1.5 border-t border-border/50 pt-2 shrink min-h-0">
         {instructions.map((inst, i) => {
           const isActive = i === activeIdx;
+          const instTitle = getTitle(inst);
           return (
             <button
-              key={inst.id || i}
+              key={inst.id ? `${inst.id}-${i}` : `inst-step-${i}`}
               type="button"
               onClick={() => onStepChange && onStepChange(i)}
               className={cn(
@@ -303,7 +319,7 @@ export const TurnByTurnCard: React.FC<TurnByTurnCardProps> = ({
               )}>
                 {i + 1}
               </span>
-              <span className="truncate flex-1">{inst.title[lang]}</span>
+              <span className="truncate flex-1">{instTitle}</span>
             </button>
           );
         })}

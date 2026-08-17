@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { floorLabel } from "@/components/FloorSelector";
 import type { CampusLocation, Language } from "@/data/locations";
+import { getLocationName } from "@/data/locations";
 
 interface Props {
   location: CampusLocation | null;
@@ -21,18 +22,6 @@ interface Props {
   onNavigate?: (id: string) => void;
   onSetStart?: (id: string) => void;
 }
-
-const CATEGORY_NAMES: Record<string, { en: string; kn: string; emoji: string }> = {
-  academic: { en: "Academic & Research", kn: "ಶೈಕ್ಷಣಿಕ ಮತ್ತು ಸಂಶೋಧನೆ", emoji: "🎓" },
-  admin: { en: "Administrative Office", kn: "ಆಡಳಿತ ಕಚೇರಿ", emoji: "🏢" },
-  facility: { en: "Campus Facility", kn: "ಕ್ಯಾಂಪಸ್ ಸೌಲಭ್ಯ", emoji: "🏛️" },
-  entrance: { en: "Entrance & Reception", kn: "ಪ್ರವೇಶ ದ್ವಾರ", emoji: "🚪" },
-  hostel: { en: "Hostel & Residence", kn: "ವಸತಿ ನಿಲಯ", emoji: "🏠" },
-  library: { en: "Library & Study Zone", kn: "ಗ್ರಂಥಾಲಯ", emoji: "📚" },
-  canteen: { en: "Food Court & Canteen", kn: "ಉಪಹಾರ ಗೃಹ", emoji: "🍽️" },
-  sports: { en: "Sports & Fitness", kn: "ಕ್ರೀಡಾ ಸಂಕೀರ್ಣ", emoji: "🏃" },
-  auditorium: { en: "Auditorium & Events", kn: "ಸಭಾಂಗಣ", emoji: "🎭" },
-};
 
 export function LocationDetailModal({
   location,
@@ -49,18 +38,13 @@ export function LocationDetailModal({
   const IconComponent =
     (Icons as unknown as Record<string, Icons.LucideIcon>)[location.icon] ?? Icons.MapPin;
 
-  const catMeta = CATEGORY_NAMES[location.category] ?? {
-    en: location.category,
-    kn: location.category,
-    emoji: "📍",
-  };
+  const locName = getLocationName(location, lang);
+  const floorName = floorLabel(location.floor);
 
   const defaultDesc =
     lang === "kn"
-      ? `${location.name.kn} (${floorLabel(location.floor)}) ಕ್ಯಾಂಪಸ್‌ನಲ್ಲಿದೆ. ಪ್ರವೇಶ ಮತ್ತು ಸೌಲಭ್ಯಗಳ ಮಾಹಿತಿಗಾಗಿ ಇಲ್ಲಿಗೆ ತಲುಪಬಹುದು.`
-      : `${location.name.en} is located on ${floorLabel(
-          location.floor
-        )} of the campus block. Open for students, staff, parents, and visitors.`;
+      ? `${locName} (${floorName}) ಕ್ಯಾಂಪಸ್‌ನಲ್ಲಿದೆ. ಪ್ರವೇಶ ಮತ್ತು ಸೌಲಭ್ಯಗಳ ಮಾಹಿತಿಗಾಗಿ ಇಲ್ಲಿಗೆ ತಲುಪಬಹುದು.`
+      : `${locName} is located on ${floorName} of the campus block. Open for students, staff, parents, and visitors.`;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -71,20 +55,17 @@ export function LocationDetailModal({
               <IconComponent className="h-6 w-6" />
             </div>
             <div className="flex items-center gap-1.5">
-              <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-semibold">
-                {catMeta.emoji} {catMeta[lang]}
-              </Badge>
               <Badge variant="outline" className="rounded-full border-primary/40 bg-primary/10 text-primary px-3 py-1 text-xs font-bold">
-                {floorLabel(location.floor)}
+                {floorName}
               </Badge>
             </div>
           </div>
 
           <div>
             <DialogTitle className="font-display text-xl font-bold leading-tight text-foreground">
-              {location.name[lang]}
+              {locName}
             </DialogTitle>
-            {lang === "en" && location.name.kn && (
+            {lang === "en" && location.name && location.name.kn && (
               <p className="mt-0.5 text-xs text-muted-foreground font-medium">
                 {location.name.kn}
               </p>
@@ -96,14 +77,14 @@ export function LocationDetailModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Useful Parent / Visitor Highlights */}
+        {/* Details Box */}
         <div className="my-2 rounded-2xl bg-muted/50 p-3 text-xs space-y-2 border border-border/50">
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="flex items-center gap-1.5 font-medium">
               <Icons.Layers className="h-3.5 w-3.5 text-primary" />
               {lang === "kn" ? "ಮಹಡಿ:" : "Floor:"}
             </span>
-            <span className="font-bold text-foreground">{floorLabel(location.floor)}</span>
+            <span className="font-bold text-foreground">{floorName}</span>
           </div>
           <div className="flex items-center justify-between text-muted-foreground">
             <span className="flex items-center gap-1.5 font-medium">

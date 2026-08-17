@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import type { CampusLocation, Language } from "@/data/locations";
+import { getLocationName } from "@/data/locations";
 import { cn } from "@/lib/utils";
 import { createRecognizer } from "@/lib/speech";
 import { tr } from "@/lib/i18n";
@@ -56,6 +57,8 @@ export function FromToNavigation({
   const fromInputRef = useRef<HTMLInputElement>(null);
   const toInputRef = useRef<HTMLInputElement>(null);
 
+  const safeLocations = Array.isArray(locations) ? locations : [];
+
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -82,19 +85,19 @@ export function FromToNavigation({
     }
   };
 
-  const selectedFrom = locations.find((l) => l.id === fromId);
-  const selectedTo = locations.find((l) => l.id === destId);
+  const selectedFrom = safeLocations.find((l) => l && l.id === fromId);
+  const selectedTo = safeLocations.find((l) => l && l.id === destId);
 
   // Search filtering
   const q = query.trim().toLowerCase();
-  const selectableLocations = locations.filter((l) => !l.hidden);
+  const selectableLocations = safeLocations.filter((l) => l && !l.hidden);
   const filteredLocations = q
     ? selectableLocations.filter(
         (l) =>
-          l.name[lang].toLowerCase().includes(q) ||
-          l.name.en.toLowerCase().includes(q) ||
-          l.slug.toLowerCase().includes(q) ||
-          l.category.toLowerCase().includes(q)
+          getLocationName(l, lang).toLowerCase().includes(q) ||
+          getLocationName(l, "en").toLowerCase().includes(q) ||
+          (l.slug && l.slug.toLowerCase().includes(q)) ||
+          (l.category && l.category.toLowerCase().includes(q))
       )
     : selectableLocations;
 
@@ -130,9 +133,9 @@ export function FromToNavigation({
 
     // Score location
     let best: { l: CampusLocation; s: number } | null = null;
-    for (const l of locations) {
-      const en = l.name.en.toLowerCase();
-      const kn = l.name.kn.toLowerCase();
+    for (const l of selectableLocations) {
+      const en = getLocationName(l, "en").toLowerCase();
+      const kn = getLocationName(l, "kn").toLowerCase();
       let score = 0;
       if (en === cleaned || kn === cleaned) score = 100;
       else if (en.includes(cleaned) || kn.includes(cleaned)) score = 80;
@@ -145,7 +148,7 @@ export function FromToNavigation({
       else onSelectDest(best.l.id);
       setQuery("");
       setActiveField(null);
-      toast.success(`Set ${targetField === "from" ? "start" : "destination"}: ${best.l.name[lang]}`);
+      toast.success(`Set ${targetField === "from" ? "start" : "destination"}: ${getLocationName(best.l, lang)}`);
     } else {
       setQuery(cleaned);
       setActiveField(targetField);
@@ -187,12 +190,12 @@ export function FromToNavigation({
     if (scannedLocationName && !selectedFrom) {
       return `Scanned: ${scannedLocationName}`;
     }
-    return selectedFrom ? selectedFrom.name[lang] : tr("chooseStart", lang);
+    return selectedFrom ? getLocationName(selectedFrom, lang) : tr("chooseStart", lang);
   };
 
   const getToDisplayValue = () => {
     if (activeField === "to") return query;
-    return selectedTo ? selectedTo.name[lang] : "";
+    return selectedTo ? getLocationName(selectedTo, lang) : "";
   };
 
   return (
@@ -426,6 +429,8 @@ export function FromToNavigation({
                   ? !isLiveMode && loc.id === fromId
                   : loc.id === destId;
 
+              const locName = getLocationName(loc, lang);
+
               return (
                 <li key={loc.id}>
                   <button
@@ -455,9 +460,9 @@ export function FromToNavigation({
                       </span>
                       <div>
                         <div className="text-sm font-semibold leading-tight text-foreground">
-                          {loc.name[lang]}
+                          {locName}
                         </div>
-                        {lang === "en" && loc.name.kn && (
+                        {lang === "en" && loc.name && loc.name.kn && (
                           <div className="text-[11px] text-muted-foreground">
                             {loc.name.kn}
                           </div>
@@ -466,7 +471,7 @@ export function FromToNavigation({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] capitalize text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         Floor {loc.floor ?? 0}
                       </span>
                       {isSelected && <Check className="h-4 w-4 text-primary" />}

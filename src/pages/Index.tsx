@@ -46,6 +46,7 @@ import {
   describeRoute,
   euclidean,
   walkingMinutes,
+  getLocationName,
   type CampusLocation,
 } from "@/data/locations";
 import {
@@ -217,7 +218,7 @@ const Index = () => {
       locations.find(
         (l) =>
           l.slug.toLowerCase().includes("main") ||
-          l.name.en.toLowerCase().includes("main gate")
+          getLocationName(l, "en").toLowerCase().includes("main gate")
       ) ?? locations.find((l) => l.category === "entrance") ?? null,
     [locations]
   );
@@ -354,7 +355,7 @@ const Index = () => {
           y1: prev.y,
           x2: node.x,
           y2: node.y,
-          label: `${prev.name.en} (F${prev.floor ?? 0}) → ${node.name.en} (F${node.floor ?? 0})`,
+          label: `${getLocationName(prev, "en")} (F${prev.floor ?? 0}) → ${getLocationName(node, "en")} (F${node.floor ?? 0})`,
           fromFloor: prev.floor ?? 0,
           toFloor: node.floor ?? 0,
         });
@@ -596,6 +597,12 @@ const Index = () => {
     return pts.length >= 2 ? pts : null;
   }, [visibleRoutePolylines]);
 
+  // Filter anchors for the current floor
+  const floorAnchors = useMemo(
+    () => anchors.filter((a) => (a.floor ?? 0) === floor),
+    [anchors, floor]
+  );
+
   // ---- Live tracking (Google-Maps style) --------------------------------
   const tracking = useLiveTracking({
     position: livePosition,
@@ -650,7 +657,7 @@ const Index = () => {
     }
     if (tracking.arrived && !arrivedRef.current) {
       arrivedRef.current = true;
-      toast.success(`You have arrived at ${to.name[lang]}`);
+      toast.success(`You have arrived at ${getLocationName(to, lang)}`);
     } else if (!tracking.arrived && tracking.remainingMeters != null && tracking.remainingMeters > 30) {
       arrivedRef.current = false;
     }
@@ -759,7 +766,7 @@ const Index = () => {
       if (loc) {
         setFloor(loc.floor ?? 0);
         setFloorTouched(true);
-        toast.success(`Start: ${loc.name[lang]}`);
+        toast.success(`Start: ${getLocationName(loc, lang)}`);
       }
     }
   };
@@ -772,7 +779,7 @@ const Index = () => {
     if (loc) {
       setFloor(loc.floor ?? 0);
       setFloorTouched(true);
-      toast.success(`Destination: ${loc.name[lang]}`);
+      toast.success(`Destination: ${getLocationName(loc, lang)}`);
     }
     mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -814,7 +821,7 @@ const Index = () => {
           {from && to ? (
             <span className="flex items-center gap-1.5">
               <Navigation className="h-3 w-3 text-primary" />
-              {from.name[lang]} → {to.name[lang]} · {Math.round(distanceMeters)}m
+              {getLocationName(from, lang)} → {getLocationName(to, lang)} · {Math.round(distanceMeters)}m
             </span>
           ) : (
             tr("campusMap", lang)
@@ -905,8 +912,8 @@ const Index = () => {
             fromId={fromId}
             destId={destId}
             isLiveMode={isLiveStart}
-            liveLocationName={gpsCurrentLocation ? gpsCurrentLocation.name[lang] : undefined}
-            scannedLocationName={scanned ? from?.name[lang] : undefined}
+            liveLocationName={gpsCurrentLocation ? getLocationName(gpsCurrentLocation, lang) : undefined}
+            scannedLocationName={scanned ? getLocationName(from, lang) : undefined}
             gpsEnabled={gpsEnabled}
             onSelectFrom={handleSelectFrom}
             onSelectDest={handleSelectDestination}
@@ -944,7 +951,7 @@ const Index = () => {
                   ) : (
                     <h1 className="mt-2 font-display text-2xl font-bold leading-tight sm:text-3xl">
                       {showCampus && from
-                        ? from.name[lang]
+                        ? getLocationName(from, lang)
                         : gpsEnabled && offCampus
                         ? "Outside Campus"
                         : "—"}
@@ -958,7 +965,7 @@ const Index = () => {
                       : onCampusGps && livePosition
                       ? nearestAnchor
                         ? `Live GPS · nearest anchor ${nearestAnchor.anchor.label} (${Math.round(nearestAnchor.d)} m) · ±${Math.round(livePosition.accuracy)}m`
-                        : `Live GPS · no anchor nearby · using ${mainGate?.name.en ?? "default start"}`
+                        : `Live GPS · no anchor nearby · using ${mainGate ? getLocationName(mainGate, "en") : "default start"}`
                       : tr("notScanned", lang)}
                   </p>
                 </>
@@ -1050,7 +1057,7 @@ const Index = () => {
                     {lang === "kn" ? "ನ್ಯಾವಿಗೇಟ್ ಮಾಡಿ" : "Navigate to"}
                   </div>
                   <h3 className="font-display text-lg font-bold text-foreground">
-                    {to.name[lang]}
+                    {getLocationName(to, lang)}
                   </h3>
                   <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
                     <span className="rounded-md bg-primary/10 px-2 py-0.5 text-primary font-semibold">
@@ -1083,7 +1090,7 @@ const Index = () => {
           {navigating && to && turnInstructions.length > 0 && (
             <div className="mb-3.5 md:mb-0 md:absolute md:top-14 md:left-6 md:z-20 md:max-w-sm md:w-80">
               <TurnByTurnCard
-                destinationName={to.name[lang]}
+                destinationName={getLocationName(to, lang)}
                 destinationFloorLabel={floorLabelName(to.floor ?? 0, lang)}
                 instructions={turnInstructions}
                 activeIndex={activeStep}
@@ -1108,7 +1115,7 @@ const Index = () => {
               <div className="flex items-center gap-1.5">
                 <span className="flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
                   <Navigation className="h-3 w-3" />
-                  {from.name[lang]} → {to.name[lang]}
+                  {getLocationName(from, lang)} → {getLocationName(to, lang)}
                 </span>
                 <Button
                   type="button"
@@ -1231,14 +1238,14 @@ const Index = () => {
                               onClick={() => handleFloorChange(g.floor)}
                               className="text-left underline-offset-2 hover:underline"
                             >
-                              {g.pts[0].name[lang]} → {g.pts[g.pts.length - 1].name[lang]}
+                              {getLocationName(g.pts[0], lang)} → {getLocationName(g.pts[g.pts.length - 1], lang)}
                             </button>
                           </div>
                           {conn && (
                             <div className="ml-4 text-[11px] text-muted-foreground">
                               ↳ {tr("takeStairs", lang)
                                 .replace("{floor}", floorLabel(conn.toFloor))
-                                .replace("{place}", route.find((r) => r.x === conn.x2 && r.y === conn.y2)?.name[lang] ?? "")}
+                                .replace("{place}", getLocationName(route.find((r) => r.x === conn.x2 && r.y === conn.y2), lang) || "")}
                             </div>
                           )}
                         </li>
@@ -1250,7 +1257,7 @@ const Index = () => {
               <Directions
                 steps={steps}
                 turnInstructions={turnInstructions}
-                destinationName={to ? to.name[lang] : undefined}
+                destinationName={to ? getLocationName(to, lang) : undefined}
                 destinationFloorLabel={to ? floorLabelName(to.floor ?? 0, lang) : undefined}
                 offRoute={tracking.offRoute}
                 arrived={tracking.arrived}

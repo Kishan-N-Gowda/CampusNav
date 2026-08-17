@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import type { CampusLocation } from "@/data/locations";
+import { getLocationName } from "@/data/locations";
 import type { GpsAnchor, Projection } from "@/lib/geo";
 import type { LiveGeo } from "@/hooks/useGeolocation";
 import { haversine } from "@/lib/geo";
@@ -40,20 +41,29 @@ interface Props {
 export function CalibrationDialog({
   open,
   onOpenChange,
-  anchors,
+  anchors = [],
   setAnchors,
-  locations,
+  locations = [],
   livePosition,
   projection,
 }: Props) {
+  const safeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter(Boolean) : []),
+    [locations]
+  );
+  const safeAnchors = useMemo(
+    () => (Array.isArray(anchors) ? anchors.filter(Boolean) : []),
+    [anchors]
+  );
+
   const [pickedLocId, setPickedLocId] = useState<string>("");
   const [manualLat, setManualLat] = useState("");
   const [manualLng, setManualLng] = useState("");
   const [manualLabel, setManualLabel] = useState("");
 
   const pickedLoc = useMemo(
-    () => locations.find((l) => l.id === pickedLocId),
-    [locations, pickedLocId]
+    () => safeLocations.find((l) => l.id === pickedLocId),
+    [safeLocations, pickedLocId]
   );
 
   const addFromCurrentGps = () => {
@@ -65,17 +75,18 @@ export function CalibrationDialog({
       toast.error("Pick the landmark you are standing at.");
       return;
     }
+    const locName = getLocationName(pickedLoc, "en");
     const newAnchor: GpsAnchor = {
       id: `${pickedLoc.id}-${Date.now()}`,
-      label: pickedLoc.name.en,
+      label: locName,
       lat: livePosition.lat,
       lng: livePosition.lng,
       x: pickedLoc.x,
       y: pickedLoc.y,
     };
-    setAnchors([...anchors.filter((a) => a.label !== pickedLoc.name.en), newAnchor]);
+    setAnchors([...safeAnchors.filter((a) => a.label !== locName), newAnchor]);
     setPickedLocId("");
-    toast.success(`Anchor saved: ${pickedLoc.name.en}`);
+    toast.success(`Anchor saved: ${locName}`);
   };
 
   const addManual = () => {
@@ -89,15 +100,16 @@ export function CalibrationDialog({
       toast.error("Enter valid latitude and longitude.");
       return;
     }
+    const locName = getLocationName(pickedLoc, "en");
     const newAnchor: GpsAnchor = {
       id: `${pickedLoc.id}-${Date.now()}`,
-      label: manualLabel || pickedLoc.name.en,
+      label: manualLabel || locName,
       lat,
       lng,
       x: pickedLoc.x,
       y: pickedLoc.y,
     };
-    setAnchors([...anchors.filter((a) => a.label !== newAnchor.label), newAnchor]);
+    setAnchors([...safeAnchors.filter((a) => a.label !== newAnchor.label), newAnchor]);
     setManualLat("");
     setManualLng("");
     setManualLabel("");
@@ -106,21 +118,21 @@ export function CalibrationDialog({
   };
 
   const remove = (id: string) => {
-    setAnchors(anchors.filter((a) => a.id !== id));
+    setAnchors(safeAnchors.filter((a) => a.id !== id));
   };
 
   // Calibration quality estimate: residual error in metres for similarity fits.
   const quality = useMemo(() => {
     if (!projection || projection.anchorCount < 2) return null;
     let total = 0;
-    for (const a of anchors) {
+    for (const a of safeAnchors) {
       const { x, y } = projection.toMap(a.lat, a.lng);
       const dx = (x - a.x) * projection.metersPerCoord;
       const dy = (y - a.y) * projection.metersPerCoord;
       total += Math.sqrt(dx * dx + dy * dy);
     }
-    return total / anchors.length;
-  }, [projection, anchors]);
+    return total / safeAnchors.length;
+  }, [projection, safeAnchors]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -181,9 +193,9 @@ export function CalibrationDialog({
               <SelectValue placeholder="Pick the landmark…" />
             </SelectTrigger>
             <SelectContent className="max-h-64">
-              {locations.map((l) => (
+              {safeLocations.map((l) => (
                 <SelectItem key={l.id} value={l.id}>
-                  {l.name.en}
+                  {getLocationName(l, "en")}
                 </SelectItem>
               ))}
             </SelectContent>

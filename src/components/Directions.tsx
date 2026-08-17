@@ -52,21 +52,29 @@ export function Directions({
   const [speaking, setSpeaking] = useState(false);
   const active = activeStep ?? 0;
 
+  const safeSteps = Array.isArray(steps) ? steps.filter(Boolean) : [];
+  const safeTurnInstructions = Array.isArray(turnInstructions) ? turnInstructions.filter(Boolean) : [];
+
   // Derive active instruction text for speech synthesis
   const activeInstructionText = (() => {
-    if (turnInstructions && turnInstructions.length > 0) {
-      const inst = turnInstructions[Math.min(active, turnInstructions.length - 1)];
+    if (safeTurnInstructions.length > 0) {
+      const inst = safeTurnInstructions[Math.min(active, safeTurnInstructions.length - 1)];
       if (!inst) return "";
-      let txt = inst.title[lang];
-      if (inst.subtitle) txt += `. ${inst.subtitle[lang]}`;
+      let txt = inst.title ? (inst.title[lang] || inst.title.en || "") : "";
+      if (inst.subtitle) {
+        const sub = inst.subtitle[lang] || inst.subtitle.en || "";
+        if (sub) txt += `. ${sub}`;
+      }
       return txt;
     }
-    return steps[active]?.[lang] ?? "";
+    const curStep = safeSteps[active];
+    if (!curStep) return "";
+    return curStep[lang] || curStep.en || "";
   })();
 
-  const totalStepCount = turnInstructions && turnInstructions.length > 0
-    ? turnInstructions.length
-    : steps.length;
+  const totalStepCount = safeTurnInstructions.length > 0
+    ? safeTurnInstructions.length
+    : safeSteps.length;
 
   useEffect(() => {
     return () => stopSpeaking();
@@ -101,12 +109,20 @@ export function Directions({
   const speak = () => {
     setSpeaking(true);
     let script = "";
-    if (turnInstructions && turnInstructions.length > 0) {
-      script = turnInstructions
-        .map((t) => t.title[lang] + (t.subtitle ? `. ${t.subtitle[lang]}` : ""))
+    if (safeTurnInstructions.length > 0) {
+      script = safeTurnInstructions
+        .map((t) => {
+          const tit = t.title ? (t.title[lang] || t.title.en || "") : "";
+          const sub = t.subtitle ? (t.subtitle[lang] || t.subtitle.en || "") : "";
+          return sub ? `${tit}. ${sub}` : tit;
+        })
+        .filter(Boolean)
         .join(lang === "kn" ? "। " : ". ");
     } else {
-      script = steps.map((s) => s[lang]).join(lang === "kn" ? "। " : ". ");
+      script = safeSteps
+        .map((s) => s[lang] || s.en || "")
+        .filter(Boolean)
+        .join(lang === "kn" ? "। " : ". ");
     }
 
     speakText(
@@ -205,15 +221,17 @@ export function Directions({
 
       {/* Step-by-Step Instructions List (Scrollable internally to prevent page height explosion) */}
       <ol className="max-h-64 sm:max-h-80 overflow-y-auto space-y-2.5 pr-1">
-        {turnInstructions && turnInstructions.length > 0
-          ? turnInstructions.map((step, i) => {
+        {safeTurnInstructions.length > 0
+          ? safeTurnInstructions.map((step, i) => {
               const isActive = onStepChange ? i === active : false;
               const isConnector = step.type === "connector";
               const isArrival = step.type === "arrive";
+              const titleText = step.title ? (step.title[lang] || step.title.en || "") : "";
+              const subText = step.subtitle ? (step.subtitle[lang] || step.subtitle.en || "") : "";
 
               return (
                 <li
-                  key={step.id || i}
+                  key={step.id ? `${step.id}-${i}` : `step-${i}`}
                   className={cn(
                     "flex items-start gap-3 rounded-xl border p-3 animate-float-in transition-all",
                     isActive
@@ -243,19 +261,20 @@ export function Directions({
                     )}
                   </span>
                   <div className="pt-0.5 text-sm leading-relaxed">
-                    <p className="font-semibold text-foreground">{step.title[lang]}</p>
-                    {step.subtitle && (
+                    <p className="font-semibold text-foreground">{titleText}</p>
+                    {subText && (
                       <p className="text-xs text-muted-foreground mt-0.5 font-medium">
-                        {step.subtitle[lang]}
+                        {subText}
                       </p>
                     )}
                   </div>
                 </li>
               );
             })
-          : steps.map((step, i) => {
+          : safeSteps.map((step, i) => {
               const isActive = onStepChange ? i === active : false;
               const isConnector = step.kind === "connector";
+              const stepText = step[lang] || step.en || "";
               return (
                 <li
                   key={i}
@@ -279,7 +298,7 @@ export function Directions({
                   >
                     {isConnector ? <ArrowUpDown className="h-4 w-4" /> : i + 1}
                   </span>
-                  <span className="pt-1 text-sm leading-relaxed">{step[lang]}</span>
+                  <span className="pt-1 text-sm leading-relaxed">{stepText}</span>
                 </li>
               );
             })}

@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import type { CampusLocation, CampusPath } from "@/data/locations";
-import { COORD_TO_METERS, euclidean } from "@/data/locations";
+import { COORD_TO_METERS, euclidean, getLocationName } from "@/data/locations";
 import { FloorSelector, floorLabel } from "@/components/FloorSelector";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,16 @@ const SNAP_RADIUS = 3;
  *  - Rebuild path distances: recompute every path.distance from current coordinates
  *  - Per-floor view of nodes/edges
  */
-export function MapPathEditor({ mapSrc, floorMaps, locations, paths }: Props) {
+export function MapPathEditor({ mapSrc, floorMaps, locations = [], paths = [] }: Props) {
+  const safeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter(Boolean) : []),
+    [locations]
+  );
+  const safePaths = useMemo(
+    () => (Array.isArray(paths) ? paths.filter(Boolean) : []),
+    [paths]
+  );
+
   const [overrides, setOverrides] = useState<Record<string, { x: number; y: number }>>({});
   const [saving, setSaving] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
@@ -60,9 +69,9 @@ export function MapPathEditor({ mapSrc, floorMaps, locations, paths }: Props) {
 
   // Floor handling
   const floors = useMemo(() => {
-    const set = new Set<number>(locations.map((l) => l.floor ?? 0));
+    const set = new Set<number>(safeLocations.map((l) => l.floor ?? 0));
     return Array.from(set).sort((a, b) => a - b);
-  }, [locations]);
+  }, [safeLocations]);
   const [floor, setFloor] = useState<number>(0);
   useEffect(() => {
     if (floors.length && !floors.includes(floor)) setFloor(floors[0]);
@@ -73,9 +82,9 @@ export function MapPathEditor({ mapSrc, floorMaps, locations, paths }: Props) {
       floors.map((f) => ({
         value: f,
         label: floorLabel(f),
-        count: locations.filter((l) => (l.floor ?? 0) === f).length,
+        count: safeLocations.filter((l) => (l.floor ?? 0) === f).length,
       })),
-    [floors, locations]
+    [floors, safeLocations]
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,19 +95,19 @@ export function MapPathEditor({ mapSrc, floorMaps, locations, paths }: Props) {
     setOverrides((o) => {
       const next: typeof o = {};
       for (const id of Object.keys(o)) {
-        if (locations.find((l) => l.id === id)) next[id] = o[id];
+        if (safeLocations.find((l) => l.id === id)) next[id] = o[id];
       }
       return next;
     });
-  }, [locations]);
+  }, [safeLocations]);
 
   const positioned = useMemo(
     () =>
-      locations.map((l) => {
+      safeLocations.map((l) => {
         const ov = overrides[l.id];
         return ov ? { ...l, x: ov.x, y: ov.y } : l;
       }),
-    [locations, overrides]
+    [safeLocations, overrides]
   );
 
   const visibleLocations = useMemo(() => {
@@ -108,14 +117,14 @@ export function MapPathEditor({ mapSrc, floorMaps, locations, paths }: Props) {
 
   // Walk paths on this floor are bold; connectors touching this floor are shown faintly for context.
   const visiblePaths = useMemo(() => {
-    if (showAllFloors) return paths;
-    return paths.filter((p) => {
+    if (showAllFloors) return safePaths;
+    return safePaths.filter((p) => {
       if (p.type === "connector") {
         return p.floor === floor || p.to_floor === floor;
       }
       return p.floor === floor;
     });
-  }, [paths, floor, showAllFloors]);
+  }, [safePaths, floor, showAllFloors]);
 
   const dirtyCount = Object.keys(overrides).length;
 
@@ -447,11 +456,12 @@ export function MapPathEditor({ mapSrc, floorMaps, locations, paths }: Props) {
           const isDirty = !!overrides[l.id];
           const isSelected = selectedId === l.id;
           const offFloor = (l.floor ?? 0) !== floor;
+          const locName = getLocationName(l, "en");
           return (
             <button
               key={l.id}
               type="button"
-              aria-label={`Move ${l.name.en}`}
+              aria-label={`Move ${locName}`}
               onPointerDown={(e) => onPointerDown(e, l)}
               onClick={(e) => e.stopPropagation()}
               className={cn(
@@ -492,7 +502,7 @@ export function MapPathEditor({ mapSrc, floorMaps, locations, paths }: Props) {
         </span>
         {selected && (
           <span className="ml-auto rounded-full bg-muted px-2.5 py-1 font-mono">
-            {selected.name.en}: {selected.x.toFixed(1)}, {selected.y.toFixed(1)}
+            {getLocationName(selected, "en")}: {selected.x.toFixed(1)}, {selected.y.toFixed(1)}
           </span>
         )}
       </div>

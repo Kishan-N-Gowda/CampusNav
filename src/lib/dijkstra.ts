@@ -23,30 +23,47 @@ export function shortestPath(
   fromId: string,
   toId: string
 ): { route: CampusLocation[]; distance: number } | null {
+  if (!Array.isArray(locations) || locations.length === 0 || !fromId || !toId) {
+    return null;
+  }
+
   if (fromId === toId) {
-    const loc = locations.find((l) => l.id === fromId);
+    const loc = locations.find((l) => l && l.id === fromId);
     return loc ? { route: [loc], distance: 0 } : null;
   }
 
-  const byId = new Map(locations.map((l) => [l.id, l]));
+  const byId = new Map<string, CampusLocation>();
+  for (const l of locations) {
+    if (l && l.id) byId.set(l.id, l);
+  }
+
   if (!byId.has(fromId) || !byId.has(toId)) return null;
 
   const adj = new Map<string, Edge[]>();
-  for (const l of locations) adj.set(l.id, []);
+  for (const l of locations) {
+    if (l && l.id) adj.set(l.id, []);
+  }
 
-  if (paths.length > 0) {
+  if (Array.isArray(paths) && paths.length > 0) {
     for (const p of paths) {
+      if (!p || !p.source_id || !p.destination_id) continue;
       const a = byId.get(p.source_id);
       const b = byId.get(p.destination_id);
       if (!a || !b) continue;
       const isConnector = p.type === "connector";
       // Reject malformed walk edges that span floors.
       if (!isConnector && (a.floor ?? 0) !== (b.floor ?? 0)) continue;
-      const w =
-        (p.distance > 0 ? p.distance : euclidean(a, b)) +
-        (isConnector ? CONNECTOR_PENALTY : 0);
-      adj.get(a.id)!.push({ to: b.id, weight: w, isConnector });
-      adj.get(b.id)!.push({ to: a.id, weight: w, isConnector });
+
+      const rawDist = Number(p.distance);
+      const distVal = Number.isFinite(rawDist) && rawDist > 0 ? rawDist : euclidean(a, b);
+      const w = distVal + (isConnector ? CONNECTOR_PENALTY : 0);
+
+      if (!Number.isFinite(w) || w <= 0) continue;
+
+      const listA = adj.get(a.id);
+      if (listA) listA.push({ to: b.id, weight: w, isConnector });
+      const listB = adj.get(b.id);
+      if (listB) listB.push({ to: a.id, weight: w, isConnector });
     }
   } else {
     // Same-floor fully-connected fallback.
@@ -54,10 +71,15 @@ export function shortestPath(
       for (let j = i + 1; j < locations.length; j++) {
         const a = locations[i];
         const b = locations[j];
+        if (!a || !b || !a.id || !b.id) continue;
         if ((a.floor ?? 0) !== (b.floor ?? 0)) continue;
         const w = euclidean(a, b);
-        adj.get(a.id)!.push({ to: b.id, weight: w, isConnector: false });
-        adj.get(b.id)!.push({ to: a.id, weight: w, isConnector: false });
+        if (!Number.isFinite(w) || w <= 0) continue;
+
+        const listA = adj.get(a.id);
+        if (listA) listA.push({ to: b.id, weight: w, isConnector: false });
+        const listB = adj.get(b.id);
+        if (listB) listB.push({ to: a.id, weight: w, isConnector: false });
       }
     }
   }
@@ -65,13 +87,14 @@ export function shortestPath(
   const dist = new Map<string, number>();
   const prev = new Map<string, string | null>();
   const visited = new Set<string>();
-  for (const l of locations) {
-    dist.set(l.id, Infinity);
-    prev.set(l.id, null);
+  for (const [id] of byId) {
+    dist.set(id, Infinity);
+    prev.set(id, null);
   }
   dist.set(fromId, 0);
 
-  while (visited.size < locations.length) {
+  const totalNodes = byId.size;
+  while (visited.size < totalNodes) {
     let u: string | null = null;
     let best = Infinity;
     for (const [id, d] of dist) {
@@ -83,7 +106,11 @@ export function shortestPath(
     if (u === null || best === Infinity) break;
     if (u === toId) break;
     visited.add(u);
-    for (const edge of adj.get(u) ?? []) {
+
+    const edges = adj.get(u);
+    if (!edges) continue;
+
+    for (const edge of edges) {
       if (visited.has(edge.to)) continue;
       const alt = best + edge.weight;
       if (alt < (dist.get(edge.to) ?? Infinity)) {
@@ -97,11 +124,23 @@ export function shortestPath(
 
   const route: CampusLocation[] = [];
   let cur: string | null = toId;
+  const loopGuard = new Set<string>();
+
   while (cur) {
+    if (loopGuard.has(cur)) {
+      // Loop detected in path reconstruction
+      break;
+    }
+    loopGuard.add(cur);
     const loc = byId.get(cur);
     if (!loc) return null;
     route.unshift(loc);
     cur = prev.get(cur) ?? null;
   }
+
+  if (route.length === 0 || route[0].id !== fromId) {
+    return null;
+  }
+
   return { route, distance: dist.get(toId) ?? 0 };
 }

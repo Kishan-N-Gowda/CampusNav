@@ -13,6 +13,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { QUICK_ACCESS_COUNTS, useAppConfig } from "@/hooks/useAppConfig";
 import type { CampusLocation } from "@/data/locations";
+import { getLocationName } from "@/data/locations";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -21,7 +22,11 @@ interface Props {
   canEdit: boolean;
 }
 
-export function AdminQuickAccess({ locations, canEdit }: Props) {
+export function AdminQuickAccess({ locations = [], canEdit }: Props) {
+  const safeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter(Boolean) : []),
+    [locations]
+  );
   const { quickAccess, refresh } = useAppConfig();
   const [count, setCount] = useState(quickAccess.count);
   const [ids, setIds] = useState<string[]>(quickAccess.location_ids);
@@ -34,11 +39,11 @@ export function AdminQuickAccess({ locations, canEdit }: Props) {
   }, [quickAccess.count, quickAccess.location_ids]);
 
   const byId = useMemo(
-    () => new Map(locations.map((l) => [l.id, l])),
-    [locations]
+    () => new Map(safeLocations.map((l) => [l.id, l])),
+    [safeLocations]
   );
   const selected = ids.filter((id) => byId.has(id));
-  const available = locations.filter((l) => !ids.includes(l.id));
+  const available = safeLocations.filter((l) => !ids.includes(l.id));
 
   const add = (id: string) => {
     if (!id || ids.includes(id)) return;
@@ -111,7 +116,7 @@ export function AdminQuickAccess({ locations, canEdit }: Props) {
               <SelectContent>
                 {available.map((l) => (
                   <SelectItem key={l.id} value={l.id}>
-                    {l.name.en}
+                    {getLocationName(l, "en")}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -143,7 +148,9 @@ export function AdminQuickAccess({ locations, canEdit }: Props) {
           </p>
         )}
         {selected.map((id, i) => {
-          const loc = byId.get(id)!;
+          const loc = byId.get(id);
+          if (!loc) return null;
+          const locName = getLocationName(loc, "en");
           const Icon =
             (Icons as unknown as Record<string, Icons.LucideIcon>)[loc.icon] ??
             Icons.MapPin;
@@ -171,9 +178,9 @@ export function AdminQuickAccess({ locations, canEdit }: Props) {
                 <Icon className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{loc.name.en}</p>
+                <p className="truncate text-sm font-semibold">{locName}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {loc.category} · Floor {loc.floor}
+                  Floor {loc.floor}
                 </p>
               </div>
               <span className="text-xs font-medium text-muted-foreground">

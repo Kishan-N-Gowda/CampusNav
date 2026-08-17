@@ -53,8 +53,13 @@ export const COORD_TO_METERS = 1.5;
 export const WALKING_M_PER_MIN = 78;
 
 export function euclidean(a: { x: number; y: number }, b: { x: number; y: number }) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
+  if (!a || !b) return 0;
+  const ax = Number.isFinite(a.x) ? a.x : 0;
+  const ay = Number.isFinite(a.y) ? a.y : 0;
+  const bx = Number.isFinite(b.x) ? b.x : 0;
+  const by = Number.isFinite(b.y) ? b.y : 0;
+  const dx = ax - bx;
+  const dy = ay - by;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
@@ -63,7 +68,19 @@ export function metersBetween(a: CampusLocation, b: CampusLocation) {
 }
 
 export function walkingMinutes(distanceMeters: number) {
+  if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) return 1;
   return Math.max(1, Math.round(distanceMeters / WALKING_M_PER_MIN));
+}
+
+export function getLocationName(loc?: Partial<CampusLocation> | null, lang: Language = "en"): string {
+  if (!loc) return lang === "kn" ? "ಸ್ಥಳ" : "Location";
+  if (loc.name) {
+    if (lang === "kn") {
+      return loc.name.kn || loc.name.en || loc.slug || "ಸ್ಥಳ";
+    }
+    return loc.name.en || loc.name.kn || loc.slug || "Location";
+  }
+  return loc.slug || (lang === "kn" ? "ಸ್ಥಳ" : "Location");
 }
 
 function floorName(n: number): { en: string; kn: string } {
@@ -81,10 +98,11 @@ function turnDirection(
   pivot: CampusLocation,
   next: CampusLocation
 ): "left" | "right" | "straight" {
-  const v1x = pivot.x - prev.x;
-  const v1y = pivot.y - prev.y;
-  const v2x = next.x - pivot.x;
-  const v2y = next.y - pivot.y;
+  if (!prev || !pivot || !next) return "straight";
+  const v1x = (pivot.x ?? 0) - (prev.x ?? 0);
+  const v1y = (pivot.y ?? 0) - (prev.y ?? 0);
+  const v2x = (next.x ?? 0) - (pivot.x ?? 0);
+  const v2y = (next.y ?? 0) - (pivot.y ?? 0);
   if ((v1x === 0 && v1y === 0) || (v2x === 0 && v2y === 0)) return "straight";
   const cross = v1x * v2y - v1y * v2x;
   const dot = v1x * v2x + v1y * v2y;
@@ -108,22 +126,17 @@ function turnPrefix(t: "left" | "right" | "straight", lang: "en" | "kn"): string
 /**
  * Generate concise, node-aware directions:
  *   Start → (walk to) Staircase → Floor change → ... → Destination
- *
- * Intermediate same-floor nodes that the path passes through are collapsed
- * into a single walk segment whose distance is the sum of the hops. Only
- * floor-transition pivots (stairs/lift) and the destination appear as named
- * waypoints — unrelated locations along the path are never mentioned.
  */
 export function describeRoute(waypoints: CampusLocation[]): LocationStep[] {
-  if (waypoints.length < 2) return [];
+  if (!Array.isArray(waypoints) || waypoints.length < 2) return [];
 
   // 1. Pick out "key" indices: start, destination, and both endpoints of any
   //    floor-change edge (the stair/lift pivot on each floor).
   const n = waypoints.length;
   const keySet = new Set<number>([0, n - 1]);
   for (let i = 0; i < n - 1; i++) {
-    const a = waypoints[i].floor ?? 0;
-    const b = waypoints[i + 1].floor ?? 0;
+    const a = waypoints[i]?.floor ?? 0;
+    const b = waypoints[i + 1]?.floor ?? 0;
     if (a !== b) {
       keySet.add(i);
       keySet.add(i + 1);
@@ -141,11 +154,13 @@ export function describeRoute(waypoints: CampusLocation[]): LocationStep[] {
   const steps: LocationStep[] = [];
   const start = waypoints[0];
   const startHidden = isLocationHidden(start);
+  const startEn = getLocationName(start, "en");
+  const startKn = getLocationName(start, "kn");
 
   steps.push({
-    en: startHidden ? "Start your route." : `Start at ${start.name.en}.`,
-    kn: startHidden ? "ನಿಮ್ಮ ಮಾರ್ಗವನ್ನು ಪ್ರಾರಂಭಿಸಿ." : `${start.name.kn} ಇಂದ ಪ್ರಾರಂಭಿಸಿ.`,
-    floor: start.floor ?? 0,
+    en: startHidden ? "Start your route." : `Start at ${startEn}.`,
+    kn: startHidden ? "ನಿಮ್ಮ ಮಾರ್ಗವನ್ನು ಪ್ರಾರಂಭಿಸಿ." : `${startKn} ಇಂದ ಪ್ರಾರಂಭಿಸಿ.`,
+    floor: start?.floor ?? 0,
     kind: "start",
   });
 
@@ -154,22 +169,28 @@ export function describeRoute(waypoints: CampusLocation[]): LocationStep[] {
     const bIdx = keys[k + 1];
     const a = waypoints[aIdx];
     const b = waypoints[bIdx];
+    if (!a || !b) continue;
+
     const aFloor = a.floor ?? 0;
     const bFloor = b.floor ?? 0;
     const last = bIdx === n - 1;
 
     const isAHidden = isLocationHidden(a);
     const isBHidden = isLocationHidden(b);
+    const aEn = getLocationName(a, "en");
+    const aKn = getLocationName(a, "kn");
+    const bEn = getLocationName(b, "en");
+    const bKn = getLocationName(b, "kn");
 
     if (aFloor !== bFloor) {
       // Floor transition via stair/lift.
       const target = floorName(bFloor);
       const enText = isAHidden
         ? `Go to ${target.en} using stairs or elevator.`
-        : `Go to ${target.en} via ${a.name.en}.`;
+        : `Go to ${target.en} via ${aEn}.`;
       const knText = isAHidden
         ? `${target.kn} ಗೆ ಮೆಟ್ಟಿಲುಗಳು ಅಥವಾ ಲಿಫ್ಟ್ ಬಳಸಿ ಹೋಗಿ.`
-        : `${a.name.kn} ಮೂಲಕ ${target.kn} ಗೆ ಹೋಗಿ.`;
+        : `${aKn} ಮೂಲಕ ${target.kn} ಗೆ ಹೋಗಿ.`;
 
       steps.push({
         en: enText,
@@ -183,22 +204,24 @@ export function describeRoute(waypoints: CampusLocation[]): LocationStep[] {
     // Same floor — collapse all hops between aIdx and bIdx into one walk.
     let coordDist = 0;
     for (let i = aIdx; i < bIdx; i++) {
-      coordDist += euclidean(waypoints[i], waypoints[i + 1]);
+      if (waypoints[i] && waypoints[i + 1]) {
+        coordDist += euclidean(waypoints[i], waypoints[i + 1]);
+      }
     }
     const meters = Math.max(1, Math.round(coordDist * COORD_TO_METERS));
 
     // Turn cue at the pivot a (if there's a prior same-floor leg).
     let turnEn = "";
     let turnKn = "";
-    if (aIdx >= 1 && (waypoints[aIdx - 1].floor ?? 0) === aFloor) {
+    if (aIdx >= 1 && (waypoints[aIdx - 1]?.floor ?? 0) === aFloor && waypoints[aIdx + 1]) {
       const t = turnDirection(waypoints[aIdx - 1], a, waypoints[aIdx + 1]);
       turnEn = turnPrefix(t, "en");
       turnKn = turnPrefix(t, "kn");
     }
 
     if (last) {
-      const destNameEn = isBHidden ? "your destination" : b.name.en;
-      const destNameKn = isBHidden ? "ನಿಮ್ಮ ತಲುಪುವ ಸ್ಥಳ" : b.name.kn;
+      const destNameEn = isBHidden ? "your destination" : bEn;
+      const destNameKn = isBHidden ? "ನಿಮ್ಮ ತಲುಪುವ ಸ್ಥಳ" : bKn;
 
       steps.push({
         en: `${turnEn}walk to ${destNameEn} (about ${meters} m).`.replace(/^./, (c) => c.toUpperCase()),
@@ -208,8 +231,8 @@ export function describeRoute(waypoints: CampusLocation[]): LocationStep[] {
       });
     } else {
       // b is a staircase/lift pivot — phrase it generically if b is hidden.
-      const walkTargetEn = isBHidden ? "the stairs/elevator" : b.name.en;
-      const walkTargetKn = isBHidden ? "ಮೆಟ್ಟಿಲುಗಳು/ಲಿಫ್ಟ್‌" : b.name.kn;
+      const walkTargetEn = isBHidden ? "the stairs/elevator" : bEn;
+      const walkTargetKn = isBHidden ? "ಮೆಟ್ಟಿಲುಗಳು/ಲಿಫ್ಟ್‌" : bKn;
 
       steps.push({
         en: `${turnEn}walk to ${walkTargetEn} (${meters} m).`.replace(/^./, (c) => c.toUpperCase()),

@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSettingsProvider } from "@/hooks/useAppSettings";
 import { isSupabaseConfigured } from "@/integrations/supabase/client";
 import { ConfigErrorScreen } from "@/components/ConfigErrorScreen";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Index from "./pages/Index.tsx";
 import Admin from "./pages/Admin.tsx";
 import Auth from "./pages/Auth.tsx";
@@ -24,23 +25,25 @@ const App = () => {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppSettingsProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/admin" element={<Admin />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AppSettingsProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AppSettingsProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/admin" element={<Admin />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AppSettingsProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 };
 
