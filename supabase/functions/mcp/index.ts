@@ -3,17 +3,19 @@
 // supabase function: mcp
 // Bundled from src/lib/mcp/index.ts by @lovable.dev/mcp-js.
 // src/lib/mcp/index.ts
-import { defineMcp } from "npm:@lovable.dev/mcp-js@0.20.0";
+import { defineMcp } from "npm:@lovable.dev/mcp-js@0.20.1";
 
 // src/lib/mcp/tools/search-locations.ts
-import { defineTool } from "npm:@lovable.dev/mcp-js@0.20.0";
+import { defineTool } from "npm:@lovable.dev/mcp-js@0.20.1";
 import { z } from "npm:zod@^3.25.76";
 
 // src/lib/mcp/supabase.ts
 import { createClient } from "npm:@supabase/supabase-js@^2.105.1";
+var DEFAULT_SUPABASE_URL = "https://zqrkpfavuqnvwbqxwacc.supabase.co";
+var SAFE_FALLBACK_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxcmtwZmF2dXFudndicXh3YWNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6MjAwMDAwMDAwMH0.placeholder";
 function mcpSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_ANON_KEY;
+  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
+  const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || SAFE_FALLBACK_ANON_KEY;
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
@@ -45,7 +47,52 @@ var search_locations_default = defineTool({
 });
 
 // src/lib/mcp/tools/list-categories.ts
-import { defineTool as defineTool2 } from "npm:@lovable.dev/mcp-js@0.20.0";
+import { defineTool as defineTool2 } from "npm:@lovable.dev/mcp-js@0.20.1";
+
+// src/lib/databasePause.ts
+var DEFAULT_PAUSE_MESSAGE = "Campus Navigation is temporarily unavailable.";
+function parsePauseValue(raw) {
+  let val = raw;
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (trimmed === "false") return { paused: false, message: DEFAULT_PAUSE_MESSAGE };
+    if (trimmed === "true") return { paused: true, message: DEFAULT_PAUSE_MESSAGE };
+    try {
+      val = JSON.parse(trimmed);
+    } catch {
+    }
+  }
+  if (typeof val === "boolean") {
+    return { paused: val, message: DEFAULT_PAUSE_MESSAGE };
+  }
+  if (val && typeof val === "object") {
+    const obj = val;
+    let isPaused = false;
+    if (typeof obj.paused === "boolean") {
+      isPaused = obj.paused;
+    } else if (typeof obj.paused === "string") {
+      isPaused = obj.paused.toLowerCase() === "true";
+    } else if (typeof obj.database_paused === "boolean") {
+      isPaused = obj.database_paused;
+    } else if (typeof obj.database_paused === "string") {
+      isPaused = obj.database_paused.toLowerCase() === "true";
+    } else if (typeof obj.isPaused === "boolean") {
+      isPaused = obj.isPaused;
+    } else if (typeof obj.isPaused === "string") {
+      isPaused = obj.isPaused.toLowerCase() === "true";
+    }
+    const message = typeof obj.message === "string" && obj.message.trim() ? obj.message.trim() : DEFAULT_PAUSE_MESSAGE;
+    return {
+      paused: isPaused,
+      message,
+      updatedAt: typeof obj.updatedAt === "string" ? obj.updatedAt : void 0,
+      updatedBy: typeof obj.updatedBy === "string" ? obj.updatedBy : void 0
+    };
+  }
+  return { paused: false, message: DEFAULT_PAUSE_MESSAGE };
+}
+
+// src/lib/mcp/tools/list-categories.ts
 var list_categories_default = defineTool2({
   name: "list_categories",
   title: "List location categories",
@@ -54,6 +101,21 @@ var list_categories_default = defineTool2({
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   handler: async () => {
     const supabase = mcpSupabase();
+    const { data: settings } = await supabase.from("app_settings").select("key, value").in("key", ["database_paused", "campus_map"]);
+    const pausedRow = (settings ?? []).find((s) => s.key === "database_paused");
+    const mapRow = (settings ?? []).find((s) => s.key === "campus_map");
+    let isPaused = false;
+    if (pausedRow?.value != null) {
+      isPaused = parsePauseValue(pausedRow.value).paused;
+    } else if (mapRow?.value?.database_paused != null) {
+      isPaused = parsePauseValue(mapRow.value.database_paused).paused;
+    }
+    if (isPaused) {
+      return {
+        content: [{ type: "text", text: "Campus Navigation is temporarily unavailable." }],
+        structuredContent: { categories: [], isPaused: true }
+      };
+    }
     const { data, error } = await supabase.from("locations").select("category");
     if (error) return { content: [{ type: "text", text: error.message }], isError: true };
     const counts = /* @__PURE__ */ new Map();
@@ -72,7 +134,7 @@ var list_categories_default = defineTool2({
 });
 
 // src/lib/mcp/tools/get-directions.ts
-import { defineTool as defineTool3 } from "npm:@lovable.dev/mcp-js@0.20.0";
+import { defineTool as defineTool3 } from "npm:@lovable.dev/mcp-js@0.20.1";
 import { z as z2 } from "npm:zod@^3.25.76";
 var COORD_TO_METERS = 1.5;
 var WALKING_M_PER_MIN = 78;
@@ -163,6 +225,21 @@ var get_directions_default = defineTool3({
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   handler: async ({ from_slug, to_slug }) => {
     const supabase = mcpSupabase();
+    const { data: settings } = await supabase.from("app_settings").select("key, value").in("key", ["database_paused", "campus_map"]);
+    const pausedRow = (settings ?? []).find((s) => s.key === "database_paused");
+    const mapRow = (settings ?? []).find((s) => s.key === "campus_map");
+    let isPaused = false;
+    if (pausedRow?.value != null) {
+      isPaused = parsePauseValue(pausedRow.value).paused;
+    } else if (mapRow?.value?.database_paused != null) {
+      isPaused = parsePauseValue(mapRow.value.database_paused).paused;
+    }
+    if (isPaused) {
+      return {
+        content: [{ type: "text", text: "Campus Navigation is temporarily unavailable." }],
+        isError: true
+      };
+    }
     const [locRes, pathRes] = await Promise.all([
       supabase.from("locations").select("id,slug,name_en,name_kn,floor,x,y"),
       supabase.from("paths").select("source_id,destination_id,distance,type,floor,to_floor")
@@ -197,5 +274,5 @@ var mcp_default = defineMcp({
 });
 
 // lovable-mcp-supabase-entry.ts
-import { createSupabaseHandler } from "npm:@lovable.dev/mcp-js@0.20.0/stacks/supabase";
+import { createSupabaseHandler } from "npm:@lovable.dev/mcp-js@0.20.1/stacks/supabase";
 Deno.serve(createSupabaseHandler(mcp_default, { functionName: "mcp" }));

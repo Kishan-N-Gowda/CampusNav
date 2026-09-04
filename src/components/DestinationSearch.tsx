@@ -45,6 +45,10 @@ export function DestinationSearch({
   const selected = safeLocations.find((l) => l && l.id === value);
 
   const tryMatch = (text: string) => {
+    if (safeLocations.length === 0) {
+      toast.message("Campus Navigation is temporarily unavailable.");
+      return;
+    }
     const lc = text.toLowerCase().trim();
     // strip common command prefixes in EN + KN
     const cleaned = lc
@@ -124,7 +128,13 @@ export function DestinationSearch({
         <input
           type="text"
           value={query}
-          placeholder={selected ? getLocationName(selected, lang) : placeholder}
+          placeholder={
+            safeLocations.length === 0
+              ? "Campus Navigation is temporarily unavailable"
+              : selected
+              ? getLocationName(selected, lang)
+              : placeholder
+          }
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
           onChange={(e) => {
@@ -158,7 +168,11 @@ export function DestinationSearch({
         <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-border bg-card shadow-card animate-float-in">
           <ul className="max-h-72 overflow-auto py-1">
             {filtered.length === 0 && (
-              <li className="px-4 py-6 text-center text-sm text-muted-foreground">No matches</li>
+              <li className="px-4 py-6 text-center text-sm text-muted-foreground">
+                {safeLocations.length === 0
+                  ? "Campus Navigation is temporarily unavailable"
+                  : "No matches"}
+              </li>
             )}
             {filtered.map((l) => (
               <li key={l.id}>

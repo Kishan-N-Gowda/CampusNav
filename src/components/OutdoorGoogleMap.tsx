@@ -24,18 +24,20 @@ export const OutdoorGoogleMap: React.FC<OutdoorGoogleMapProps> = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const userMarkerRef = useRef<google.maps.Marker | null>(null);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const routePolylinesRef = useRef<google.maps.Polyline[]>([]);
   const fallbackPolylineRef = useRef<google.maps.Polyline | null>(null);
+  const routesLibRef = useRef<any>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [apiNotice, setApiNotice] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [roadDistanceMeters, setRoadDistanceMeters] = useState<number | null>(null);
-  const [travelMode] = useState<google.maps.TravelMode>(
-    typeof google !== "undefined" && google.maps ? google.maps.TravelMode.WALKING : ("WALKING" as unknown as google.maps.TravelMode)
-  );
 
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const apiKey =
+    (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
+    (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+    process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+    "";
 
   // Calculate campus center/main gate from existing anchors
   const campusTarget = React.useMemo(() => {
@@ -55,7 +57,7 @@ export const OutdoorGoogleMap: React.FC<OutdoorGoogleMapProps> = ({
 
   useEffect(() => {
     if (!apiKey) {
-      setLoadError("Google Maps API key (VITE_GOOGLE_MAPS_API_KEY) is not configured.");
+      setLoadError("Google Maps API key is not configured.");
       setIsLoading(false);
       return;
     }
@@ -68,11 +70,12 @@ export const OutdoorGoogleMap: React.FC<OutdoorGoogleMapProps> = ({
 
     Promise.all([
       importLibrary("maps"),
-      importLibrary("routes"),
-      importLibrary("marker"),
+      importLibrary("routes").catch(() => null),
+      importLibrary("marker").catch(() => null),
     ])
-      .then(() => {
+      .then(([mapsLib, routesLib]) => {
         if (!isMounted || !mapContainerRef.current) return;
+        routesLibRef.current = routesLib;
 
         const defaultCenter = userPosition
           ? { lat: userPosition.lat, lng: userPosition.lng }
@@ -110,18 +113,6 @@ export const OutdoorGoogleMap: React.FC<OutdoorGoogleMapProps> = ({
           },
         });
 
-        // Initialize Directions Renderer
-        const directionsRenderer = new google.maps.DirectionsRenderer({
-          map,
-          suppressMarkers: false,
-          polylineOptions: {
-            strokeColor: "#2563eb",
-            strokeOpacity: 0.8,
-            strokeWeight: 5,
-          },
-        });
-        directionsRendererRef.current = directionsRenderer;
-
         setIsLoading(false);
       })
       .catch((err) => {
@@ -137,57 +128,60 @@ export const OutdoorGoogleMap: React.FC<OutdoorGoogleMapProps> = ({
     };
   }, [apiKey, campusTarget, userPosition]);
 
-  const renderDirectFallback = React.useCallback((
-    map: google.maps.Map,
-    origin: { lat: number; lng: number },
-    destination: { lat: number; lng: number; name: string }
-  ) => {
-    if (directionsRendererRef.current) {
-      directionsRendererRef.current.setMap(null);
-    }
+  const renderDirectFallback = React.useCallback(
+    (
+      map: google.maps.Map,
+      origin: { lat: number; lng: number },
+      destination: { lat: number; lng: number; name: string }
+    ) => {
+      // Clear route computed polylines
+      routePolylinesRef.current.forEach((p) => p.setMap(null));
+      routePolylinesRef.current = [];
 
-    if (!fallbackPolylineRef.current) {
-      fallbackPolylineRef.current = new google.maps.Polyline({
-        path: [origin, { lat: destination.lat, lng: destination.lng }],
-        geodesic: true,
-        strokeColor: "#2563eb",
-        strokeOpacity: 0.85,
-        strokeWeight: 4,
-        map,
-      });
-    } else {
-      fallbackPolylineRef.current.setPath([origin, { lat: destination.lat, lng: destination.lng }]);
-      fallbackPolylineRef.current.setMap(map);
-    }
+      if (!fallbackPolylineRef.current) {
+        fallbackPolylineRef.current = new google.maps.Polyline({
+          path: [origin, { lat: destination.lat, lng: destination.lng }],
+          geodesic: true,
+          strokeColor: "#2563eb",
+          strokeOpacity: 0.85,
+          strokeWeight: 4,
+          map,
+        });
+      } else {
+        fallbackPolylineRef.current.setPath([origin, { lat: destination.lat, lng: destination.lng }]);
+        fallbackPolylineRef.current.setMap(map);
+      }
 
-    const bounds = new google.maps.LatLngBounds();
-    bounds.extend(origin);
-    bounds.extend({ lat: destination.lat, lng: destination.lng });
-    map.fitBounds(bounds, { top: 70, bottom: 70, left: 50, right: 50 });
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend(origin);
+      bounds.extend({ lat: destination.lat, lng: destination.lng });
+      map.fitBounds(bounds, { top: 70, bottom: 70, left: 50, right: 50 });
 
-    const R = 6371000;
-    const dLat = ((destination.lat - origin.lat) * Math.PI) / 180;
-    const dLon = ((destination.lng - origin.lng) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((origin.lat * Math.PI) / 180) *
-        Math.cos((destination.lat * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distM = R * c;
+      const R = 6371000;
+      const dLat = ((destination.lat - origin.lat) * Math.PI) / 180;
+      const dLon = ((destination.lng - origin.lng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((origin.lat * Math.PI) / 180) *
+          Math.cos((destination.lat * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distM = R * c;
 
-    setRoadDistanceMeters(distM);
-    onRoadDistanceChange?.(distM);
+      setRoadDistanceMeters(distM);
+      onRoadDistanceChange?.(distM);
 
-    setApiNotice(
-      lang === "kn"
-        ? "ಕ್ಯಾಂಪಸ್ ಪ್ರವೇಶದ್ವಾರಕ್ಕೆ ನೇರ ಮಾರ್ಗ. ಪೂರ್ಣ ಟರ್ನ್-ಬೈ-ಟರ್ನ್ ನ್ಯಾವಿಗೇಷನ್‌ಗಾಗಿ ಗೂಗಲ್ ಮ್ಯಾಪ್ಸ್ ಆಪ್ ಬಳಸಿ."
-        : "Direct route vector. Tap external app for turn-by-turn routing."
-    );
-  }, [lang, onRoadDistanceChange]);
+      setApiNotice(
+        lang === "kn"
+          ? "ಕ್ಯಾಂಪಸ್ ಪ್ರವೇಶದ್ವಾರಕ್ಕೆ ನೇರ ಮಾರ್ಗ. ಪೂರ್ಣ ಟರ್ನ್-ಬೈ-ಟರ್ನ್ ನ್ಯಾವಿಗೇಷನ್‌ಗಾಗಿ ಗೂಗಲ್ ಮ್ಯಾಪ್ಸ್ ಆಪ್ ಬಳಸಿ."
+          : "Direct route vector. Tap external app for turn-by-turn routing."
+      );
+    },
+    [lang, onRoadDistanceChange]
+  );
 
-  // Update user position marker and compute route to campus
+  // Update user position marker and compute route to campus using modern Routes API or fallback
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !userPosition || typeof google === "undefined" || !google.maps) return;
@@ -213,40 +207,66 @@ export const OutdoorGoogleMap: React.FC<OutdoorGoogleMapProps> = ({
       userMarkerRef.current.setPosition(userLatLng);
     }
 
-    try {
-      const directionsService = new google.maps.DirectionsService();
-      directionsService.route(
-        {
-          origin: userLatLng,
-          destination: { lat: campusTarget.lat, lng: campusTarget.lng },
-          travelMode: travelMode,
-        },
-        (result, status) => {
-          if (status === google.maps.DirectionsStatus.OK && result) {
+    const routesLib = routesLibRef.current;
+    if (routesLib?.Route?.computeRoutes) {
+      routesLib.Route.computeRoutes({
+        origin: userLatLng,
+        destination: { lat: campusTarget.lat, lng: campusTarget.lng },
+        travelMode: "WALKING",
+        fields: ["path", "distanceMeters", "durationMillis", "viewport"],
+      })
+        .then(({ routes }: { routes?: any[] }) => {
+          if (routes && routes[0]) {
             setApiNotice(null);
             if (fallbackPolylineRef.current) {
               fallbackPolylineRef.current.setMap(null);
             }
-            if (directionsRendererRef.current) {
-              directionsRendererRef.current.setDirections(result);
+
+            routePolylinesRef.current.forEach((p) => p.setMap(null));
+            routePolylinesRef.current = [];
+
+            if (typeof routes[0].createPolylines === "function") {
+              const polylines = routes[0].createPolylines({
+                polylineOptions: {
+                  strokeColor: "#2563eb",
+                  strokeOpacity: 0.85,
+                  strokeWeight: 5,
+                },
+              });
+              polylines.forEach((p: google.maps.Polyline) => p.setMap(map));
+              routePolylinesRef.current = polylines;
+            } else if (routes[0].path) {
+              const polyline = new google.maps.Polyline({
+                path: routes[0].path,
+                geodesic: true,
+                strokeColor: "#2563eb",
+                strokeOpacity: 0.85,
+                strokeWeight: 5,
+                map,
+              });
+              routePolylinesRef.current = [polyline];
             }
-            const leg = result.routes[0]?.legs[0];
-            if (leg && leg.distance && typeof leg.distance.value === "number") {
-              const meters = leg.distance.value;
-              setRoadDistanceMeters(meters);
-              onRoadDistanceChange?.(meters);
+
+            if (routes[0].viewport) {
+              map.fitBounds(routes[0].viewport, { top: 70, bottom: 70, left: 50, right: 50 });
+            }
+
+            if (typeof routes[0].distanceMeters === "number") {
+              setRoadDistanceMeters(routes[0].distanceMeters);
+              onRoadDistanceChange?.(routes[0].distanceMeters);
             }
           } else {
-            console.warn("[OutdoorGoogleMap] Directions service returned status:", status);
             renderDirectFallback(map, userLatLng, campusTarget);
           }
-        }
-      );
-    } catch (err) {
-      console.warn("[OutdoorGoogleMap] Directions exception:", err);
+        })
+        .catch((err: any) => {
+          console.warn("[OutdoorGoogleMap] Routes API fallback:", err?.message || err);
+          renderDirectFallback(map, userLatLng, campusTarget);
+        });
+    } else {
       renderDirectFallback(map, userLatLng, campusTarget);
     }
-  }, [userPosition, campusTarget, travelMode, lang, renderDirectFallback, onRoadDistanceChange]);
+  }, [userPosition, campusTarget, lang, renderDirectFallback, onRoadDistanceChange]);
 
   const openInGoogleMapsApp = () => {
     if (!userPosition) {

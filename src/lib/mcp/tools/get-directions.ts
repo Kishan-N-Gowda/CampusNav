@@ -1,6 +1,7 @@
 import { defineTool } from "@lovable.dev/mcp-js";
 import { z } from "zod";
 import { mcpSupabase } from "../supabase";
+import { parsePauseValue } from "../../databasePause";
 
 const COORD_TO_METERS = 1.5;
 const WALKING_M_PER_MIN = 78;
@@ -105,6 +106,27 @@ export default defineTool({
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
   handler: async ({ from_slug, to_slug }) => {
     const supabase = mcpSupabase();
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["database_paused", "campus_map"]);
+
+    const pausedRow = (settings ?? []).find((s) => s.key === "database_paused");
+    const mapRow = (settings ?? []).find((s) => s.key === "campus_map");
+
+    let isPaused = false;
+    if (pausedRow?.value != null) {
+      isPaused = parsePauseValue(pausedRow.value).paused;
+    } else if ((mapRow?.value as any)?.database_paused != null) {
+      isPaused = parsePauseValue((mapRow?.value as any).database_paused).paused;
+    }
+
+    if (isPaused) {
+      return {
+        content: [{ type: "text", text: "Campus Navigation is temporarily unavailable." }],
+        isError: true,
+      };
+    }
     const [locRes, pathRes] = await Promise.all([
       supabase.from("locations").select("id,slug,name_en,name_kn,floor,x,y"),
       supabase.from("paths").select("source_id,destination_id,distance,type,floor,to_floor"),

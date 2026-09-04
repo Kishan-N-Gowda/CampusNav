@@ -30,6 +30,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleReset = () => {
+    try {
+      sessionStorage.clear();
+    } catch {
+      // Ignore
+    }
     this.setState({ hasError: false, error: null, errorInfo: null });
   };
 

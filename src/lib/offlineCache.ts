@@ -2,6 +2,8 @@
 // - Locations & paths: persisted to localStorage and reused when offline / fetch fails.
 // - Map image: persisted to the browser Cache Storage so it loads without network.
 
+import { isDatabasePausedNow } from "./databasePause";
+
 const LS_KEY = "campusnav.cache.v1";
 const MAP_CACHE = "campusnav-map-v1";
 
@@ -11,7 +13,12 @@ export interface CachedCampusData<L, P> {
   cachedAt: number;
 }
 
-export function readCache<L, P>(): CachedCampusData<L, P> | null {
+export function readCache<L, P>(bypassPause = false): CachedCampusData<L, P> | null {
+  // If the database is currently paused and the caller is not an admin bypass,
+  // do not return cached campus locations/paths to the public UI.
+  if (!bypassPause && isDatabasePausedNow()) {
+    return null;
+  }
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
@@ -21,7 +28,11 @@ export function readCache<L, P>(): CachedCampusData<L, P> | null {
   }
 }
 
-export function writeCache<L, P>(locations: L[], paths: P[]) {
+export function writeCache<L, P>(locations: L[], paths: P[], bypassPause = false) {
+  // Never overwrite existing cached campus data with empty arrays while paused
+  if (!bypassPause && isDatabasePausedNow() && locations.length === 0 && paths.length === 0) {
+    return;
+  }
   try {
     const payload: CachedCampusData<L, P> = {
       locations,

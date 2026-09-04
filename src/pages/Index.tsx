@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowLeftRight,
   Compass,
   MapPin,
   Navigation,
+  Pause,
   Play,
   QrCode,
   Satellite,
@@ -22,6 +23,7 @@ import { TurnByTurnCard } from "@/components/TurnByTurnCard";
 import { LocationDetailModal } from "@/components/LocationDetailModal";
 import { OutdoorGoogleMap } from "@/components/OutdoorGoogleMap";
 import { NavigationModeBar, type NavMode } from "@/components/NavigationModeBar";
+import { QRScanner } from "@/components/QRScanner";
 import { playArrivalSound } from "@/lib/sound";
 
 import { FloorSelector, floorLabel } from "@/components/FloorSelector";
@@ -59,8 +61,17 @@ import { toast } from "sonner";
 const Index = () => {
   const { lang } = useAppSettings();
   const { isAdmin } = useAuth();
-  const { locations, paths, loading, fromCache } = useCampusData();
-  const { quickAccess, mapSrcForFloor, mappedFloors } = useAppConfig();
+  const { locations, paths, loading, fromCache, isPaused, pauseMessage: dataPauseMessage } = useCampusData();
+  const {
+    quickAccess,
+    mapSrcForFloor,
+    mappedFloors,
+    databasePaused,
+    pauseMessage: configPauseMessage,
+    setDatabasePaused,
+  } = useAppConfig();
+  const isCurrentlyPaused = databasePaused;
+  const activePauseMessage = configPauseMessage || dataPauseMessage || "Campus Navigation is temporarily unavailable.";
   const [params] = useSearchParams();
   
   const [online, setOnline] = useState(
@@ -75,12 +86,24 @@ const Index = () => {
   const [showLabels, setShowLabels] = useState(false);
   const [floor, setFloor] = useState<number>(0);
   const [floorTouched, setFloorTouched] = useState(false);
+
+  useEffect(() => {
+    if (isCurrentlyPaused) {
+      setDestId(undefined);
+      setFromId(undefined);
+      setScannedLocationId(null);
+      setModalLocation(null);
+      setModalOpen(false);
+    }
+  }, [isCurrentlyPaused]);
   /** Map image for the currently displayed floor (falls back to the default map). */
   const floorMap = mapSrcForFloor(floor);
 
   const mapSectionRef = useRef<HTMLElement | null>(null);
   const [modalLocation, setModalLocation] = useState<CampusLocation | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [scannedLocationId, setScannedLocationId] = useState<string | null>(null);
 
   const [activeStep, setActiveStep] = useState(0);
   const [navigating, setNavigating] = useState(false);
@@ -158,16 +181,31 @@ const Index = () => {
     };
   }, []);
 
-  // Resolve "from" from URL ?location= or default to first entrance/first location
+  // Resolve "from", "to", and "scan" trigger from URL params
   useEffect(() => {
     if (locations.length === 0) return;
-    const slug = params.get("location");
-    const matched = slug
-      ? locations.find((l) => l.slug === slug || l.id === slug)
+
+    if (params.get("scan") === "1" || params.get("scan") === "true" || params.get("qr") === "1") {
+      setQrScannerOpen(true);
+    }
+
+    const startSlug = params.get("location") || params.get("start") || params.get("from");
+    const destSlug = params.get("destination") || params.get("dest") || params.get("to");
+
+    if (destSlug) {
+      const matchedDest = locations.find((l) => l.slug === destSlug || l.id === destSlug);
+      if (matchedDest) {
+        setDestId(matchedDest.id);
+      }
+    }
+
+    const matched = startSlug
+      ? locations.find((l) => l.slug === startSlug || l.id === startSlug)
       : null;
     if (matched) {
       setFromId(matched.id);
       setIsLiveStart(false);
+      setScannedLocationId(matched.id);
     } else if (!fromId) {
       const entrance = locations.find((l) => l.category === "entrance") ?? locations[0];
       setFromId(entrance.id);
@@ -182,7 +220,7 @@ const Index = () => {
     () => locations.find((l) => l.id === destId),
     [locations, destId]
   );
-  const scanned = !!params.get("location") && !!from;
+  const scanned = (!!params.get("location") || !!scannedLocationId) && !!from;
 
   const result = useMemo(() => {
     if (!from || !to) return null;
@@ -813,6 +851,43 @@ const Index = () => {
     toast.info("Swapped starting point and destination");
   };
 
+  // When paused, don't show anything - just text showing that it's unavailable
+  if (isCurrentlyPaused) {
+    return (
+      <div className="flex min-h-screen w-full flex-col items-center justify-center p-6 text-center bg-background text-foreground select-none">
+        <p className="text-base sm:text-lg font-medium text-muted-foreground">
+          {activePauseMessage || "Campus Navigation is temporarily unavailable."}
+        </p>
+        {isAdmin ? (
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                await setDatabasePaused(false);
+                toast.success("Campus Navigation resumed!");
+              }}
+              className="h-8 text-xs gap-1.5"
+            >
+              <Play className="h-3.5 w-3.5 fill-current" />
+              Resume
+            </Button>
+            <Button size="sm" variant="ghost" asChild className="h-8 text-xs text-muted-foreground">
+              <Link to="/admin">Admin</Link>
+            </Button>
+          </div>
+        ) : (
+          <Link
+            to="/admin"
+            className="mt-8 text-[11px] text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+          >
+            Admin
+          </Link>
+        )}
+      </div>
+    );
+  }
+
   // Full-screen overlay
   if (fullScreen) {
     return (
@@ -879,21 +954,21 @@ const Index = () => {
   }
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-2xl px-4 py-5 sm:px-6 sm:py-8">
-      <AppHeader />
+    <div className="mx-auto min-h-dvh w-full max-w-2xl px-4 py-5 sm:px-6 sm:py-8 overflow-x-hidden">
+      <AppHeader onOpenScanner={() => setQrScannerOpen(true)} />
 
-      <main className="mt-6 space-y-5">
+      <main className="mt-6 space-y-5 w-full max-w-full min-w-0">
         {(!online || fromCache) && (
           <div className="flex items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
-            <WifiOff className="h-3.5 w-3.5" />
-            {tr("offlineMode", lang)}
+            <WifiOff className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{tr("offlineMode", lang)}</span>
           </div>
         )}
 
         {gpsEnabled && offCampus && (
           <div className="flex items-start gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
             <Satellite className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>
+            <span className="break-words">
               You are outside the campus. GPS navigation is available only near campus.
               {distanceToCampusM != null && (
                 <span className="ml-1 font-normal opacity-80">
@@ -905,7 +980,7 @@ const Index = () => {
         )}
 
         {/* Top-level Google Maps Style From -> To Navigation */}
-        <section>
+        <section className="w-full max-w-full min-w-0">
           <FromToNavigation
             locations={locations}
             lang={lang}
@@ -919,20 +994,33 @@ const Index = () => {
             onSelectDest={handleSelectDestination}
             onSwap={swapEndpoints}
             onEnableGps={() => handleSelectFrom("live")}
+            onOpenScanner={() => setQrScannerOpen(true)}
           />
         </section>
 
         {/* Current Location Card */}
         <section
-          className="relative overflow-hidden rounded-3xl bg-gradient-primary p-6 text-primary-foreground shadow-card"
+          className="relative overflow-hidden rounded-3xl bg-gradient-primary p-5 sm:p-6 text-primary-foreground shadow-card w-full max-w-full min-w-0"
           aria-label={tr("currentLocation", lang)}
         >
-          <div className="absolute -right-12 -top-16 h-48 w-48 rounded-full bg-white/20 blur-3xl" />
-          <div className="absolute -bottom-16 -left-12 h-48 w-48 rounded-full bg-accent/30 blur-3xl" />
-          <div className="relative">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-foreground/80">
-              {scanned ? <QrCode className="h-3.5 w-3.5" /> : <MapPin className="h-3.5 w-3.5" />}
-              {tr("currentLocation", lang)}
+          <div className="absolute -right-12 -top-16 h-48 w-48 rounded-full bg-white/20 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-16 -left-12 h-48 w-48 rounded-full bg-accent/30 blur-3xl pointer-events-none" />
+          <div className="relative min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary-foreground/80 truncate">
+                {scanned ? <QrCode className="h-3.5 w-3.5 shrink-0" /> : <MapPin className="h-3.5 w-3.5 shrink-0" />}
+                <span className="truncate">{tr("currentLocation", lang)}</span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => setQrScannerOpen(true)}
+                className="gap-1.5 rounded-full bg-white/20 text-primary-foreground hover:bg-white/30 text-xs font-semibold px-3 h-7 shadow-xs shrink-0"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                {lang === "kn" ? "ಕ್ಯೂಆರ್ ಸ್ಕ್ಯಾನ್" : "Scan QR"}
+              </Button>
             </div>
             {(() => {
               const onCampusGps =
@@ -949,16 +1037,20 @@ const Index = () => {
                   {loading ? (
                     <Skeleton className="mt-2 h-9 w-2/3 bg-white/30" />
                   ) : (
-                    <h1 className="mt-2 font-display text-2xl font-bold leading-tight sm:text-3xl">
-                      {showCampus && from
+                    <h1 className="mt-2 font-display text-xl sm:text-2xl lg:text-3xl font-bold leading-tight break-words">
+                      {isCurrentlyPaused
+                        ? "Navigation Paused"
+                        : showCampus && from
                         ? getLocationName(from, lang)
                         : gpsEnabled && offCampus
                         ? "Outside Campus"
                         : "—"}
                     </h1>
                   )}
-                  <p className="mt-1 text-xs text-primary-foreground/75">
-                    {scanned
+                  <p className="mt-1 text-xs text-primary-foreground/75 break-words">
+                    {isCurrentlyPaused
+                      ? "Campus Navigation is temporarily unavailable."
+                      : scanned
                       ? tr("scannedHint", lang)
                       : gpsEnabled && offCampus
                       ? `~${distLabel} from campus · scan a campus QR to set your location`
@@ -994,6 +1086,16 @@ const Index = () => {
                     ? "Turn on Location"
                     : "Connecting…"
                   : "Use my location"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => setQrScannerOpen(true)}
+                className="gap-1.5 rounded-full bg-white/15 text-primary-foreground hover:bg-white/25"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                {lang === "kn" ? "ಕ್ಯಾಂಪಸ್ ಕ್ಯೂಆರ್ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ" : "Scan Location QR"}
               </Button>
               {isAdmin && (
                 <Button
@@ -1320,6 +1422,44 @@ const Index = () => {
           }
           mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           setModalOpen(false);
+        }}
+      />
+
+      <QRScanner
+        open={qrScannerOpen}
+        onClose={() => setQrScannerOpen(false)}
+        locations={locations}
+        lang={lang}
+        currentDestinationId={destId}
+        onSelectStart={(id) => {
+          setIsLiveStart(false);
+          setFromId(id);
+          setScannedLocationId(id);
+          const loc = locations.find((l) => l.id === id);
+          if (loc) {
+            setFloor(loc.floor ?? 0);
+            setFloorTouched(true);
+          }
+          mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+        onSelectDestination={(id) => {
+          handleSelectDestination(id);
+        }}
+        onSelectRoute={(startId, destinationId) => {
+          setIsLiveStart(false);
+          setFromId(startId);
+          setDestId(destinationId);
+          setScannedLocationId(startId);
+          const startLoc = locations.find((l) => l.id === startId);
+          if (startLoc) {
+            setFloor(startLoc.floor ?? 0);
+            setFloorTouched(true);
+          }
+          mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          setNavigating(true);
+        }}
+        onViewLocation={(loc) => {
+          handleOpenLocationDetail(loc);
         }}
       />
     </div>

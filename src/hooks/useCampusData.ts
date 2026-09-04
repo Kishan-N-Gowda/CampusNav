@@ -2,6 +2,11 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { CampusLocation, CampusPath } from "@/data/locations";
 import { readCache, writeCache } from "@/lib/offlineCache";
+import {
+  isDatabasePausedNow,
+  getDatabasePausedState,
+  DATABASE_PAUSE_EVENT,
+} from "@/lib/databasePause";
 
 interface State {
   locations: CampusLocation[];
@@ -10,6 +15,13 @@ interface State {
   error: string | null;
   fromCache: boolean;
   cachedAt: number | null;
+  isPaused: boolean;
+  pauseMessage?: string;
+}
+
+export interface UseCampusDataOptions {
+  /** When true (e.g. in Admin dashboard), loads and manages database records even if paused. */
+  bypassPause?: boolean;
 }
 
 function rowToLocation(row: any): CampusLocation {
@@ -92,16 +104,22 @@ function rowToPath(p: any): CampusPath {
   };
 }
 
-export function useCampusData() {
+export function useCampusData(options?: UseCampusDataOptions) {
+  const bypassPause = Boolean(options?.bypassPause);
+  const pauseState = getDatabasePausedState();
+  const initiallyPaused = !bypassPause && pauseState.paused;
+
   // Hydrate from cache synchronously so the UI works while offline.
-  const initial = readCache<CampusLocation, CampusPath>();
+  const initial = initiallyPaused ? null : readCache<CampusLocation, CampusPath>(bypassPause);
   const [state, setState] = useState<State>({
     locations: Array.isArray(initial?.locations) ? initial.locations.map(rowToLocation) : [],
     paths: Array.isArray(initial?.paths) ? initial.paths.map(rowToPath) : [],
-    loading: !initial,
+    loading: initiallyPaused ? false : !initial,
     error: null,
     fromCache: !!initial,
     cachedAt: initial?.cachedAt ?? null,
+    isPaused: initiallyPaused,
+    pauseMessage: pauseState.message,
   });
 
   const mountedRef = useRef(true);
@@ -115,7 +133,28 @@ export function useCampusData() {
 
   const refresh = useCallback(async () => {
     if (!mountedRef.current) return;
-    setState((s) => ({ ...s, loading: s.locations.length === 0, error: null }));
+
+    // Check pause condition if not an admin bypass
+    const currentPause = getDatabasePausedState();
+    const shouldPause = !bypassPause && currentPause.paused;
+
+    if (shouldPause) {
+      if (mountedRef.current) {
+        setState({
+          locations: [],
+          paths: [],
+          loading: false,
+          error: null,
+          fromCache: false,
+          cachedAt: null,
+          isPaused: true,
+          pauseMessage: currentPause.message,
+        });
+      }
+      return;
+    }
+
+    setState((s) => ({ ...s, loading: s.locations.length === 0, error: null, isPaused: false }));
     try {
       const [locRes, pathRes] = await Promise.all([
         supabase.from("locations").select("*").order("name_en"),
@@ -126,7 +165,7 @@ export function useCampusData() {
       const paths = (pathRes.data ?? []).map(rowToPath);
 
       try {
-        writeCache(locations, paths);
+        writeCache(locations, paths, bypassPause);
       } catch {
         // Ignore cache errors
       }
@@ -139,35 +178,63 @@ export function useCampusData() {
           error: null,
           fromCache: false,
           cachedAt: Date.now(),
+          isPaused: false,
+          pauseMessage: currentPause.message,
         });
       }
     } catch (err: any) {
-      // Network/Supabase failure — keep cached data if any.
+      // Network/Supabase failure — restore cached data if available and not paused.
       if (mountedRef.current) {
+        const cached = readCache<CampusLocation, CampusPath>(bypassPause);
+        const cachedLocs = Array.isArray(cached?.locations) ? cached.locations.map(rowToLocation) : [];
+        const cachedPaths = Array.isArray(cached?.paths) ? cached.paths.map(rowToPath) : [];
         setState((s) => ({
           ...s,
+          locations: s.locations.length > 0 ? s.locations : cachedLocs,
+          paths: s.paths.length > 0 ? s.paths : cachedPaths,
           loading: false,
           error: err?.message ?? "Failed to load",
-          fromCache: s.locations.length > 0,
+          fromCache: s.locations.length > 0 || cachedLocs.length > 0,
+          isPaused: false,
         }));
       }
     }
-  }, []);
+  }, [bypassPause]);
 
   useEffect(() => {
     refresh();
+
+    // Listen for local pause state events
+    const onLocalPauseChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail.paused === "boolean") {
+        setState((s) => ({
+          ...s,
+          isPaused: detail.paused,
+          pauseMessage: detail.message || s.pauseMessage,
+        }));
+      }
+      refresh();
+    };
+    window.addEventListener(DATABASE_PAUSE_EVENT, onLocalPauseChange);
+
+    // Subscribe to realtime changes on locations, paths, AND app_settings (for database_paused)
     const channel = supabase
-      .channel("campus-data")
+      .channel(`campus-data-${bypassPause ? "admin" : "public"}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "locations" }, refresh)
       .on("postgres_changes", { event: "*", schema: "public", table: "paths" }, refresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, refresh)
       .subscribe();
+
     const onOnline = () => refresh();
     window.addEventListener("online", onOnline);
+
     return () => {
       supabase.removeChannel(channel);
       window.removeEventListener("online", onOnline);
+      window.removeEventListener(DATABASE_PAUSE_EVENT, onLocalPauseChange);
     };
-  }, [refresh]);
+  }, [refresh, bypassPause]);
 
   return { ...state, refresh };
 }

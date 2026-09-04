@@ -16,6 +16,12 @@ import {
   Eye,
   EyeOff,
   Check,
+  Pause,
+  Play,
+  Database,
+  AlertCircle,
+  ShieldCheck,
+  CheckCircle2,
 } from "lucide-react";
 import { AdminQuickAccess } from "@/components/AdminQuickAccess";
 import { AdminMapManager } from "@/components/AdminMapManager";
@@ -96,10 +102,22 @@ function slugify(s: string) {
 function AdminInner() {
   const navigate = useNavigate();
   const { user, isSuperAdmin } = useAuth();
-  const { locations, paths, loading } = useCampusData();
-  const { mapSrc: campusMap, floorMapSrcs } = useAppConfig();
+  const { locations, paths, loading, refresh } = useCampusData({ bypassPause: true });
+  const {
+    mapSrc: campusMap,
+    floorMapSrcs,
+    databasePaused,
+    pauseMessage,
+    setDatabasePaused,
+  } = useAppConfig();
   const [tab, setTab] = useState("locations");
+  const [togglingPause, setTogglingPause] = useState(false);
+  const [customPauseMsg, setCustomPauseMsg] = useState(pauseMessage || "Campus Navigation is temporarily unavailable.");
   const [editing, setEditing] = useState<FormState | null>(null);
+
+  useEffect(() => {
+    if (pauseMessage) setCustomPauseMsg(pauseMessage);
+  }, [pauseMessage]);
   const [showDelete, setShowDelete] = useState<CampusLocation | null>(null);
   const [qrFor, setQrFor] = useState<CampusLocation | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -486,8 +504,8 @@ function AdminInner() {
   };
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto min-h-dvh w-full max-w-5xl px-4 py-5 sm:px-6 sm:py-8 overflow-x-hidden">
+      <header className="flex flex-wrap items-center justify-between gap-3 w-full max-w-full min-w-0">
         <Link
           to="/"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
@@ -503,10 +521,131 @@ function AdminInner() {
       </header>
 
       <div className="mt-4">
-        <h1 className="font-display text-3xl font-bold gradient-text">Admin Dashboard</h1>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold gradient-text">Admin Dashboard</h1>
         <p className="text-sm text-muted-foreground">
           Manage locations, paths, and generate campus QR codes.
         </p>
+      </div>
+
+      {/* Database Pause & Content Control */}
+      <div
+        className={`mt-4 rounded-2xl border p-3.5 sm:p-4 transition-all shadow-soft overflow-hidden w-full max-w-full min-w-0 ${
+          databasePaused
+            ? "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100"
+            : "border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100"
+        }`}
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5 sm:gap-3 min-w-0 flex-1">
+            <div
+              className={`mt-0.5 rounded-xl p-2 sm:p-2.5 shrink-0 ${
+                databasePaused
+                  ? "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                  : "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+              }`}
+            >
+              {databasePaused ? <Pause className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <span className="font-display font-bold text-xs sm:text-sm md:text-base">
+                  Database Content Status:
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] sm:text-xs font-bold uppercase tracking-wider ${
+                    databasePaused
+                      ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                      : "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
+                  }`}
+                >
+                  {databasePaused ? "Paused (Maintenance)" : "Active (Live)"}
+                </span>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground break-words">
+                {databasePaused
+                  ? "Public campus navigation is currently paused. No locations, paths, markers, or search results are displayed to the public. All existing records remain safely stored in the database."
+                  : "Public campus navigation is live. Campus locations, paths, routing, and search are available to public users."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+            <Button
+              size="sm"
+              variant={databasePaused ? "default" : "outline"}
+              disabled={togglingPause}
+              onClick={async () => {
+                setTogglingPause(true);
+                try {
+                  const next = !databasePaused;
+                  const ok = await setDatabasePaused(next, customPauseMsg);
+                  if (ok) {
+                    toast.success(
+                      next
+                        ? "Database content is now PAUSED for public users."
+                        : "Campus Navigation is now LIVE."
+                    );
+                  } else {
+                    toast.info(
+                      next ? "Updated pause status locally." : "Resumed navigation locally."
+                    );
+                  }
+                } finally {
+                  setTogglingPause(false);
+                }
+              }}
+              className={
+                databasePaused
+                  ? "bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+                  : "text-amber-600 hover:text-amber-700 gap-1.5"
+              }
+            >
+              {togglingPause ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : databasePaused ? (
+                <>
+                  <Play className="h-4 w-4 fill-current" />
+                  Resume Navigation
+                </>
+              ) : (
+                <>
+                  <Pause className="h-4 w-4" />
+                  Pause Database Content
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {databasePaused && (
+          <div className="mt-3.5 border-t border-amber-500/20 pt-3 text-xs flex flex-col sm:flex-row sm:items-center gap-2 justify-between w-full max-w-full min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 text-amber-800 dark:text-amber-200 min-w-0">
+              <span className="font-semibold shrink-0">Public message:</span>
+              <span className="italic truncate max-w-full">
+                "{pauseMessage || "Campus Navigation is temporarily unavailable."}"
+              </span>
+            </div>
+            <div className="flex w-full sm:w-auto items-center gap-2 min-w-0">
+              <Input
+                value={customPauseMsg}
+                onChange={(e) => setCustomPauseMsg(e.target.value)}
+                placeholder="Custom pause message..."
+                className="h-7 text-xs bg-background/80 flex-1 sm:w-64 min-w-0"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2 shrink-0"
+                onClick={async () => {
+                  await setDatabasePaused(true, customPauseMsg);
+                  toast.success("Pause message updated");
+                }}
+              >
+                Save Message
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {!isSupabaseConfigured && (
@@ -522,7 +661,7 @@ function AdminInner() {
       )}
 
       {/* Stats */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 w-full max-w-full min-w-0">
         {[
           { label: "Locations", value: stats.total, icon: MapPin },
           { label: "QR codes", value: stats.qrLinks, icon: QrCode },
@@ -531,20 +670,20 @@ function AdminInner() {
         ].map((s) => (
           <div
             key={s.label}
-            className="rounded-2xl border border-border bg-card p-4 shadow-soft"
+            className="rounded-2xl border border-border bg-card p-4 shadow-soft min-w-0 overflow-hidden"
           >
-            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              <s.icon className="h-3.5 w-3.5" /> {s.label}
+            <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate">
+              <s.icon className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{s.label}</span>
             </div>
-            <div className="mt-1 font-display text-2xl font-bold">
+            <div className="mt-1 font-display text-2xl font-bold truncate">
               {loading ? <Skeleton className="h-7 w-12" /> : s.value}
             </div>
           </div>
         ))}
       </div>
 
-      <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <Tabs value={tab} onValueChange={setTab} className="mt-6 w-full max-w-full min-w-0">
+        <div className="w-full max-w-full overflow-x-auto pb-1 scrollbar-none">
           <TabsList className="inline-flex w-max">
             <TabsTrigger value="locations">Locations</TabsTrigger>
             <TabsTrigger value="paths">Paths</TabsTrigger>
@@ -891,7 +1030,7 @@ function AdminInner() {
               No paths yet. Without paths, the navigator falls back to a same-floor Euclidean graph.
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-soft">
+            <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-soft w-full max-w-full min-w-0">
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>

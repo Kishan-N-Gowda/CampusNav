@@ -33,7 +33,7 @@ const SAMPLE = {
   kn: "ಮುಂದಿನ ಕಾರಿಡಾರ್‌ನಲ್ಲಿ ಬಲಕ್ಕೆ ತಿರುಗಿ, ಇಪ್ಪತ್ತು ಮೀಟರ್ ಮುಂದೆ ಸಾಗಿ.",
 };
 
-export function SettingsSheet() {
+export function SettingsSheet({ triggerClassName }: { triggerClassName?: string } = {}) {
   const [open, setOpen] = useState(false);
   const [prefs, setPrefs] = useState<VoicePrefs>(() => loadVoicePrefs());
   const [enVoices, setEnVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -80,7 +80,7 @@ export function SettingsSheet() {
           variant="ghost"
           size="icon"
           aria-label="Settings"
-          className="h-10 w-10 rounded-xl"
+          className={triggerClassName || "h-8 w-8 rounded-lg sm:h-9 sm:w-9 sm:rounded-xl"}
         >
           <Settings2 className="h-4 w-4" />
         </Button>

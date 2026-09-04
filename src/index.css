@@ -95,11 +95,24 @@
   * {
     @apply border-border;
   }
+  html {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: 'Poppins', system-ui, sans-serif;
     background: var(--gradient-hero);
     background-attachment: fixed;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    max-width: 100%;
+    width: 100%;
+  }
+  #root {
+    overflow-x: hidden;
+    max-width: 100%;
+    width: 100%;
     min-height: 100dvh;
   }
   h1, h2, h3, h4 {

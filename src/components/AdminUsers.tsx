@@ -121,7 +121,7 @@ export function AdminUsers() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-soft">
+      <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-soft w-full max-w-full min-w-0">
         <table className="w-full min-w-[480px] text-sm">
           <thead className="bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
             <tr>

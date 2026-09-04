@@ -15,6 +15,10 @@ export default defineConfig(({ mode }) => ({
     },
   },
   envPrefix: ["VITE_", "NEXT_PUBLIC_", "REACT_APP_", "SUPABASE_"],
+  define: {
+    "process.env.GOOGLE_MAPS_PLATFORM_KEY": JSON.stringify(process.env.GOOGLE_MAPS_PLATFORM_KEY || ""),
+    "process.env.VITE_GOOGLE_MAPS_API_KEY": JSON.stringify(process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_PLATFORM_KEY || ""),
+  },
   plugins: [react(), mode === "development" && componentTagger(), mcpPlugin()].filter(Boolean),
   resolve: {
     alias: {

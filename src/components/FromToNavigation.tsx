@@ -32,6 +32,7 @@ interface Props {
   onSelectDest: (locationId: string) => void;
   onSwap: () => void;
   onEnableGps?: () => void;
+  onOpenScanner?: () => void;
 }
 
 export function FromToNavigation({
@@ -47,6 +48,7 @@ export function FromToNavigation({
   onSelectDest,
   onSwap,
   onEnableGps,
+  onOpenScanner,
 }: Props) {
   const [activeField, setActiveField] = useState<"from" | "to" | null>(null);
   const [editableField, setEditableField] = useState<"from" | "to" | null>(null);
@@ -181,6 +183,7 @@ export function FromToNavigation({
 
   // Field text representations
   const getFromDisplayValue = () => {
+    if (locations.length === 0) return "Campus Navigation is temporarily unavailable";
     if (activeField === "from") return query;
     if (isLiveMode) {
       return liveLocationName
@@ -194,6 +197,7 @@ export function FromToNavigation({
   };
 
   const getToDisplayValue = () => {
+    if (locations.length === 0) return "Campus Navigation is temporarily unavailable";
     if (activeField === "to") return query;
     return selectedTo ? getLocationName(selectedTo, lang) : "";
   };
@@ -201,15 +205,15 @@ export function FromToNavigation({
   return (
     <div
       ref={containerRef}
-      className="relative rounded-3xl border border-border bg-card p-4 sm:p-5 shadow-card"
+      className="relative rounded-3xl border border-border bg-card p-4 sm:p-5 shadow-card w-full max-w-full min-w-0 overflow-hidden"
     >
       {/* Header Bar */}
-      <div className="mb-3 flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-primary text-primary-foreground shadow-soft">
+      <div className="mb-3 flex items-center justify-between gap-2 px-1 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-primary text-primary-foreground shadow-soft shrink-0">
             <Navigation className="h-4 w-4" />
           </div>
-          <span className="font-display text-sm font-bold tracking-tight text-foreground">
+          <span className="font-display text-sm font-bold tracking-tight text-foreground truncate">
             {lang === "kn" ? "ಮಾರ್ಗ ಸಂಚರಣೆ" : "Route Directions"}
           </span>
         </div>
@@ -218,7 +222,7 @@ export function FromToNavigation({
         {isLiveMode ? (
           <Badge
             variant="secondary"
-            className="gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400"
+            className="gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 shrink-0"
           >
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             {tr("useGPS", lang)}
@@ -226,7 +230,7 @@ export function FromToNavigation({
         ) : scannedLocationName ? (
           <Badge
             variant="secondary"
-            className="gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary"
+            className="gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary shrink-0"
           >
             <QrCode className="h-3 w-3" />
             QR Location
@@ -235,7 +239,7 @@ export function FromToNavigation({
       </div>
 
       {/* From-To Input Panel */}
-      <div className="relative flex items-center gap-2 sm:gap-3">
+      <div className="relative flex items-center gap-2 sm:gap-3 w-full max-w-full min-w-0">
         {/* Visual Connector Line (From dot -> To dot) */}
         <div className="flex flex-col items-center py-2 shrink-0">
           <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
@@ -344,21 +348,40 @@ export function FromToNavigation({
           </div>
         </div>
 
-        {/* Swap Button */}
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={() => {
-            onSwap();
-            setActiveField(null);
-          }}
-          className="h-10 w-10 shrink-0 rounded-2xl border-border bg-background shadow-soft hover:bg-muted transition-all active:scale-95"
-          title={tr("swapFromTo", lang)}
-          aria-label={tr("swapFromTo", lang)}
-        >
-          <ArrowLeftRight className="h-4 w-4 text-primary" />
-        </Button>
+        {/* Actions Cluster (Swap & Scan QR) */}
+        <div className="flex flex-col gap-1.5 shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={() => {
+              onSwap();
+              setActiveField(null);
+            }}
+            className="h-9 w-9 rounded-xl border-border bg-background shadow-soft hover:bg-muted transition-all active:scale-95"
+            title={tr("swapFromTo", lang)}
+            aria-label={tr("swapFromTo", lang)}
+          >
+            <ArrowLeftRight className="h-4 w-4 text-primary" />
+          </Button>
+
+          {onOpenScanner && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                setActiveField(null);
+                onOpenScanner();
+              }}
+              className="h-9 w-9 rounded-xl border-primary/40 bg-primary/5 text-primary shadow-soft hover:bg-primary/15 transition-all active:scale-95"
+              title={lang === "kn" ? "ಕ್ಯೂಆರ್ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ" : "Scan Campus QR"}
+              aria-label="Scan Campus QR"
+            >
+              <QrCode className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* DROPDOWN MENU FOR SELECTING LOCATIONS */}
@@ -374,6 +397,40 @@ export function FromToNavigation({
           </div>
 
           <ul className="max-h-64 overflow-y-auto divide-y divide-border/30">
+            {/* Quick Option: Scan Campus QR Tag */}
+            {onOpenScanner && (
+              <li>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setActiveField(null);
+                    onOpenScanner();
+                  }}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-primary/10 bg-primary/5 border-b border-primary/10"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-soft">
+                      <QrCode className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <div className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                        {lang === "kn" ? "ಕ್ಯಾಂಪಸ್ ಕ್ಯೂಆರ್ ಟ್ಯಾಗ್ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ" : "Scan Campus QR Tag"}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {activeField === "from"
+                          ? lang === "kn" ? "ಪ್ರಾರಂಭಿಸಲು ಬೋರ್ಡ್ ಅಥವಾ ಕೋಣೆಯ ಕ್ಯೂಆರ್ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ" : "Scan plaque at your current spot to set start"
+                          : lang === "kn" ? "ಗಮ್ಯಸ್ಥಾನವನ್ನು ಹೊಂದಿಸಲು ಕ್ಯೂಆರ್ ಸ್ಕ್ಯಾನ್ ಮಾಡಿ" : "Scan destination tag or brochure QR"}
+                      </div>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="border-primary/40 text-primary text-[10px]">
+                    Camera
+                  </Badge>
+                </button>
+              </li>
+            )}
+
             {/* Special Top Option for "FROM" field: USE LIVE LOCATION */}
             {activeField === "from" && (
               <li>
@@ -418,7 +475,9 @@ export function FromToNavigation({
             {filteredLocations.length === 0 && (
               <li className="p-6 text-center text-sm text-muted-foreground">
                 <Search className="mx-auto mb-2 h-6 w-6 text-muted-foreground/60" />
-                No matching campus locations found.
+                {locations.length === 0
+                  ? "Campus Navigation is temporarily unavailable."
+                  : "No matching campus locations found."}
               </li>
             )}
 
