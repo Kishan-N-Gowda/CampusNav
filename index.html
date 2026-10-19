@@ -4,19 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- TODO: Set the document title to the name of your application -->
-    <title>CampusNav — Smart QR Campus Navigation</title>
-    <meta name="description" content="Navigate your college campus with QR codes. Get instant directions to library, departments, offices and more." />
-    <meta name="author" content="Lovable" />
+    <title>Campus Navigator — Smart QR Campus Navigation</title>
+    <meta name="description" content="Smart QR Campus Navigation with live tracking and directions." />
+    <meta name="author" content="Campus Navigator" />
 
-    <!-- TODO: Update og:title to match your application name -->
-    <meta property="og:title" content="Lovable App" />
-    <meta property="og:description" content="Lovable Generated Project" />
+    <meta property="og:title" content="Campus Navigator" />
+    <meta property="og:description" content="Smart QR Campus Navigation with live tracking and directions." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@Lovable" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta name="twitter:title" content="Campus Navigator" />
+    <meta name="twitter:description" content="Smart QR Campus Navigation with live tracking and directions." />
+    <script>
+      (function() {
+        window.addEventListener('error', function(e) {
+          if ((e.filename && e.filename.indexOf('chrome-extension://') !== -1) ||
+              (e.message && typeof e.message === 'string' && e.message.indexOf('chrome: call method') !== -1)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e.reason;
+          var msg = typeof reason === 'string' ? reason : (reason && reason.message) || '';
+          var stack = (reason && reason.stack) || '';
+          if (msg.indexOf('chrome: call method') !== -1 || stack.indexOf('chrome-extension://') !== -1) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
   </head>
 
   <body>
